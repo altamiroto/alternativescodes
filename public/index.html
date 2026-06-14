@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Planilha">
+<link rel="manifest" href="./manifest.json">
+<title>Planilha</title>
+<style>
+:root {
+  --bg0:#0e0e0e; --bg1:#1a1a1a; --bg2:#242424; --bg3:#2e2e2e;
+  --line:rgba(255,255,255,0.08); --line2:rgba(255,255,255,0.15);
+  --t1:#f0f0f0; --t2:#999; --t3:#555;
+  --accent:#4a9eff; --accent-bg:rgba(74,158,255,0.12);
+  --green:#3ecf8e; --green-bg:rgba(62,207,142,0.12);
+  --yellow:#f5a623; --yellow-bg:rgba(245,166,35,0.12);
+  --red:#f06060; --red-bg:rgba(240,96,96,0.12);
+  --r:10px; --rl:14px; --tabh:60px; --hdrh:52px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+html,body{height:100%;overflow:hidden;background:var(--bg0);color:var(--t1);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;-webkit-font-smoothing:antialiased;}
+
+/* LAYOUT */
+#app{display:flex;flex-direction:column;height:100vh;height:100dvh;}
+#header{height:var(--hdrh);display:flex;align-items:center;padding:0 14px;gap:8px;background:var(--bg1);border-bottom:0.5px solid var(--line);flex-shrink:0;}
+#hdr-back{width:36px;height:36px;display:none;align-items:center;justify-content:center;border:none;background:var(--bg2);border-radius:8px;color:var(--t1);cursor:pointer;flex-shrink:0;}
+#hdr-back svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;}
+#hdr-title{flex:1;font-size:16px;font-weight:600;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+#hdr-actions{display:flex;gap:6px;flex-shrink:0;align-items:center;}
+.hbtn{height:34px;padding:0 12px;border:0.5px solid var(--line2);border-radius:8px;background:var(--bg2);color:var(--t1);font-size:13px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:5px;white-space:nowrap;}
+.hbtn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
+.hbtn:active{opacity:0.6;}
+
+/* SYNC INDICATOR */
+#sync-status {display:flex;align-items:center;justify-content:center;height:34px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:600;gap:6px;background:var(--bg2);border:0.5px solid var(--line);cursor:pointer;}
+.sync-dot {width:8px;height:8px;border-radius:50%;background:var(--t3);}
+#sync-status.online .sync-dot {background:var(--green);box-shadow:0 0 5px var(--green);}
+#sync-status.syncing .sync-dot {background:var(--accent);animation:pulse 1s infinite;}
+#sync-status.pending .sync-dot {background:var(--yellow);}
+#sync-status.error .sync-dot {background:var(--red);}
+@keyframes pulse { 0% {opacity:1;} 50% {opacity:0.4;} 100% {opacity:1;} }
+
+#content{flex:1;overflow:hidden;position:relative;}
+.screen{position:absolute;inset:0;overflow-y:auto;-webkit-overflow-scrolling:touch;display:none;padding-bottom:16px;}
+.screen.active{display:block;}
+
+#tabbar{height:var(--tabh);display:flex;background:var(--bg1);border-top:0.5px solid var(--line);flex-shrink:0;padding-bottom:env(safe-area-inset-bottom);}
+.tbtn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;border:none;background:none;color:var(--t3);font-size:10px;font-weight:500;cursor:pointer;padding:6px 0;}
+.tbtn svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;}
+.tbtn.active{color:var(--accent);}
+
+/* UTILS */
+.card{background:var(--bg1);border:0.5px solid var(--line);border-radius:var(--rl);overflow:hidden;margin:0 14px 12px;}
+.label-sm{font-size:11px;font-weight:600;color:var(--t3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;display:block;}
+.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:60px 20px;color:var(--t3);font-size:14px;text-align:center;line-height:1.5;}
+.empty-state svg{width:44px;height:44px;stroke:currentColor;fill:none;stroke-width:1.3;stroke-linecap:round;stroke-linejoin:round;}
+.hint{font-size:13px;color:var(--t3);padding:12px 14px 0;line-height:1.5;}
+
+/* BOTÕES */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:46px;padding:0 18px;font-size:15px;font-weight:500;border:0.5px solid var(--line2);border-radius:var(--r);background:var(--bg2);color:var(--t1);cursor:pointer;white-space:nowrap;}
+.btn svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0;}
+.btn:active{opacity:0.6;transform:scale(0.97);}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;}
+.btn.green{background:var(--green-bg);border-color:var(--green);color:var(--green);}
+.btn.danger{background:var(--red-bg);border-color:var(--red);color:var(--red);}
+.btn.full{width:100%;}
+.act-row{display:flex;gap:8px;padding:12px 14px;flex-wrap:wrap;}
+.act-row .btn{flex:1;min-width:120px;}
+
+/* TABELA */
+.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+table{border-collapse:collapse;font-size:13px;width:100%;}
+thead th{background:var(--bg2);color:var(--t2);font-size:11px;font-weight:600;padding:0;border-bottom:0.5px solid var(--line2);white-space:nowrap;position:sticky;top:0;z-index:2;}
+th .th-inner{display:flex;align-items:center;min-width:90px;}
+th input.th-input{flex:1;background:transparent;border:none;color:var(--t2);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;padding:10px 12px;font-family:inherit;outline:none;min-width:0;width:100%;}
+th input.th-input:focus{color:var(--accent);background:var(--accent-bg);}
+th.th-num{width:36px;min-width:36px;}
+th.th-num .th-inner{min-width:36px;justify-content:center;}
+tbody tr{border-bottom:0.5px solid var(--line);cursor:pointer;}
+tbody tr:last-child{border-bottom:none;}
+tbody tr:active{background:var(--bg2);}
+tbody tr.selected td{background:var(--accent-bg);}
+tbody td{padding:11px 12px;color:var(--t1);white-space:nowrap;max-width:160px;overflow:hidden;text-overflow:ellipsis;}
+tbody td.num-cell{color:var(--t3);font-size:11px;text-align:center;padding:11px 4px;width:36px;}
+tbody td.empty-cell{color:var(--t3);}
+.cell-thumb {width:24px;height:24px;border-radius:4px;object-fit:cover;vertical-align:middle;margin-right:6px;}
+
+/* EDITAR LINHA */
+.row-nav{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg1);border-bottom:0.5px solid var(--line);}
+.row-nav-info{font-size:13px;color:var(--t2);}
+.nav-arrows{display:flex;gap:6px;}
+.nav-arrow{width:36px;height:36px;border:0.5px solid var(--line2);border-radius:8px;background:var(--bg2);display:flex;align-items:center;justify-content:center;cursor:pointer;}
+.nav-arrow:disabled{opacity:0.25;cursor:default;}
+.nav-arrow:active:not(:disabled){background:var(--bg3);}
+.nav-arrow svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;}
+.field-wrap{padding:14px;border-bottom:0.5px solid var(--line);}
+.field-wrap:last-of-type{border-bottom:none;}
+.field-input{width:100%;padding:13px 14px;font-size:16px;border:0.5px solid var(--line);border-radius:var(--r);background:var(--bg2);color:var(--t1);font-family:inherit;outline:none;}
+.field-input:focus{border-color:var(--accent);background:var(--bg3);}
+.file-preview {display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.file-preview img {width:60px;height:60px;border-radius:8px;object-fit:cover;border:1px solid var(--line);}
+.file-preview .file-icon {width:60px;height:60px;border-radius:8px;background:var(--bg2);display:flex;align-items:center;justify-content:center;border:1px solid var(--line);}
+.file-preview .file-icon svg {width:24px;height:24px;stroke:var(--t2);fill:none;stroke-width:2;}
+.file-info {flex:1;overflow:hidden;}
+.file-name {font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.file-btns {display:flex;gap:8px;}
+.autosave-hint{font-size:12px;color:var(--t3);padding:10px 14px 0;display:flex;align-items:center;gap:5px;}
+.autosave-hint svg{width:13px;height:13px;stroke:var(--green);fill:none;stroke-width:2.5;}
+.edit-btns{display:flex;gap:10px;padding:14px;}
+.edit-btns .btn{flex:1;}
+
+/* COLUNAS */
+.col-row{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:0.5px solid var(--line);touch-action:none;}
+.col-row:last-child{border-bottom:none;}
+.col-row.drag-over{background:var(--accent-bg);border-color:var(--accent);}
+.col-row.dragging{opacity:0.4;}
+.drag-handle{width:32px;height:32px;display:flex;align-items:center;justify-content:center;color:var(--t3);cursor:grab;flex-shrink:0;}
+.drag-handle svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;}
+.col-num{font-size:12px;color:var(--t3);width:18px;text-align:center;flex-shrink:0;}
+.col-name-input{flex:1;padding:10px 12px;font-size:15px;border:0.5px solid var(--line);border-radius:var(--r);background:var(--bg2);color:var(--t1);font-family:inherit;outline:none;}
+.col-type-sel {padding:9px 8px;font-size:13px;border:0.5px solid var(--line);border-radius:8px;background:var(--bg2);color:var(--t1);font-family:inherit;outline:none;}
+.col-del{width:36px;height:36px;display:flex;align-items:center;justify-content:center;border:0.5px solid transparent;border-radius:8px;background:none;color:var(--t3);cursor:pointer;flex-shrink:0;}
+.col-del:active{background:var(--red-bg);color:var(--red);}
+.col-del svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;}
+
+/* PLANILHAS & CONFIG */
+.sheet-row{display:flex;align-items:center;gap:12px;padding:14px;border-bottom:0.5px solid var(--line);cursor:pointer;}
+.sheet-row:last-child{border-bottom:none;}
+.sheet-icon{width:40px;height:40px;border-radius:10px;background:var(--bg2);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.sheet-icon svg{width:20px;height:20px;stroke:var(--t2);fill:none;stroke-width:1.7;}
+.sheet-row.current .sheet-icon{background:var(--accent-bg);}
+.sheet-row.current .sheet-icon svg{stroke:var(--accent);}
+.sheet-info{flex:1;min-width:0;}
+.sheet-name{font-size:15px;font-weight:500;}
+.sheet-meta{font-size:12px;color:var(--t3);margin-top:2px;}
+.cfg-row{display:flex;flex-direction:column;gap:8px;padding:14px;border-bottom:0.5px solid var(--line);}
+.cfg-row:last-child{border-bottom:none;}
+
+/* TOAST E MODAL */
+#toast{position:fixed;bottom:calc(var(--tabh) + 14px);left:50%;transform:translateX(-50%) translateY(4px);background:var(--bg3);border:0.5px solid var(--line2);color:var(--t1);padding:9px 18px;border-radius:20px;font-size:13px;font-weight:500;opacity:0;transition:opacity 0.18s,transform 0.18s;pointer-events:none;z-index:999;white-space:nowrap;}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+#overlay{position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:800;display:none;align-items:flex-end;}
+#overlay.open{display:flex;}
+#modal{background:var(--bg1);border-radius:18px 18px 0 0;padding:20px;width:100%;padding-bottom:calc(20px + env(safe-area-inset-bottom));}
+.modal-pill{width:36px;height:4px;background:var(--line2);border-radius:2px;margin:0 auto 16px;}
+.modal-title{font-size:17px;font-weight:600;margin-bottom:14px;}
+.modal-input{width:100%;padding:13px 14px;font-size:16px;border:0.5px solid var(--line);border-radius:var(--r);background:var(--bg2);color:var(--t1);font-family:inherit;outline:none;margin-bottom:14px;}
+.modal-p{font-size:14px;color:var(--t2);line-height:1.5;margin-bottom:16px;}
+.modal-btns{display:flex;gap:10px;}
+.modal-btns .btn{flex:1;}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="header">
+    <button id="hdr-back" onclick="goBack()">
+      <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+    </button>
+    <span id="hdr-title">Planilha</span>
+    <div id="hdr-actions">
+      <div id="sync-status" class="offline" onclick="forceSync()">
+        <div class="sync-dot"></div>
+        <span id="sync-text">Offline</span>
+      </div>
+    </div>
+  </div>
+
+  <div id="content">
+    <!-- PLANILHA -->
+    <div class="screen active" id="screen-table">
+      <div class="act-row">
+        <button class="btn" onclick="addRow()">
+          <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Nova linha
+        </button>
+        <button class="btn danger" onclick="confirmDeleteRow()">
+          <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+          Remover
+        </button>
+      </div>
+      <div class="card">
+        <div class="table-wrap">
+          <table><thead id="tbl-head"></thead><tbody id="tbl-body"></tbody></table>
+        </div>
+      </div>
+      <div id="table-empty" class="empty-state" style="display:none;">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+        Nenhuma linha ainda.<br>Toque em "Nova linha" para começar.
+      </div>
+    </div>
+
+    <!-- EDITAR LINHA -->
+    <div class="screen" id="screen-edit">
+      <div class="row-nav">
+        <span class="row-nav-info" id="edit-nav-info">—</span>
+        <div class="nav-arrows">
+          <button class="nav-arrow" id="btn-prev" onclick="navRow(-1)"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg></button>
+          <button class="nav-arrow" id="btn-next" onclick="navRow(1)"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></button>
+        </div>
+      </div>
+      <div id="edit-card" class="card" style="margin-top:12px;">
+        <p class="autosave-hint"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Salvo localmente</p>
+        <div id="edit-fields"></div>
+        <div class="edit-btns">
+          <button class="btn" onclick="goBack()"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg> Voltar</button>
+          <button class="btn green" onclick="addRowFromEdit()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Nova</button>
+        </div>
+      </div>
+      <div id="edit-empty" class="empty-state" style="display:none;">
+        <svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+        Toque em uma linha para editar.
+      </div>
+    </div>
+
+    <!-- COLUNAS -->
+    <div class="screen" id="screen-cols">
+      <p class="hint" style="padding-bottom:12px;">Defina as colunas e seus tipos. Salvo automaticamente.</p>
+      <div class="card" id="cols-list"></div>
+      <div style="padding:0 14px;">
+        <button class="btn full" onclick="addColumn()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Adicionar coluna</button>
+      </div>
+    </div>
+
+    <!-- PLANILHAS & CONFIG -->
+    <div class="screen" id="screen-sheets">
+      <div class="card" id="sheets-list"></div>
+      <div class="act-row">
+        <button class="btn primary" onclick="createSheet()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Nova planilha</button>
+      </div>
+      <p class="hint" style="margin-top:10px;">Configurações do Servidor (VPS)</p>
+      <div class="card">
+        <div class="cfg-row">
+          <span class="label-sm">URL do Servidor API</span>
+          <input type="text" id="cfg-url" class="field-input" placeholder="Ex: https://meuvps.com/api" onchange="saveConfig()">
+        </div>
+        <div class="cfg-row">
+          <span class="label-sm">Token de Acesso</span>
+          <input type="text" id="cfg-token" class="field-input" placeholder="Token secreto" onchange="saveConfig()">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="tabbar">
+    <button class="tbtn active" id="tab-table" onclick="goTab('table')">
+      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/></svg> Planilha
+    </button>
+    <button class="tbtn" id="tab-edit" onclick="goTab('edit')">
+      <svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg> Editar
+    </button>
+    <button class="tbtn" id="tab-cols" onclick="goTab('cols')">
+      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg> Colunas
+    </button>
+    <button class="tbtn" id="tab-sheets" onclick="goTab('sheets')">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> Config
+    </button>
+  </div>
+</div>
+
+<div id="toast"></div>
+<div id="overlay" onclick="overlayClick(event)">
+  <div id="modal">
+    <div class="modal-pill"></div>
+    <div class="modal-title" id="modal-title"></div>
+    <div id="modal-body"></div>
+    <div class="modal-btns" id="modal-btns"></div>
+  </div>
+</div>
+
+<script>
+// ==========================================
+// INDEXEDDB WRAPPER
+// ==========================================
+const DB_NAME = 'PlanilhaAppDB';
+const DB_VER = 1;
+let db;
+
+function initDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VER);
+    req.onupgradeneeded = e => {
+      let d = e.target.result;
+      if(!d.objectStoreNames.contains('sheets')) d.createObjectStore('sheets', {keyPath: 'id'});
+      if(!d.objectStoreNames.contains('files')) d.createObjectStore('files', {keyPath: 'id'});
+      if(!d.objectStoreNames.contains('config')) d.createObjectStore('config', {keyPath: 'id'});
+    };
+    req.onsuccess = e => { db = e.target.result; resolve(db); };
+    req.onerror = e => reject(e);
+  });
+}
+
+function dbPut(store, data) {
+  return new Promise((res, rej) => {
+    const tx = db.transaction(store, 'readwrite');
+    tx.objectStore(store).put(data);
+    tx.oncomplete = () => res();
+    tx.onerror = e => rej(e);
+  });
+}
+
+function dbGet(store, id) {
+  return new Promise((res, rej) => {
+    const tx = db.transaction(store, 'readonly');
+    const req = tx.objectStore(store).get(id);
+    req.onsuccess = () => res(req.result);
+    req.onerror = e => rej(e);
+  });
+}
+
+function dbGetAll(store) {
+  return new Promise((res, rej) => {
+    const tx = db.transaction(store, 'readonly');
+    const req = tx.objectStore(store).getAll();
+    req.onsuccess = () => res(req.result);
+    req.onerror = e => rej(e);
+  });
+}
+
+function dbDelete(store, id) {
+  return new Promise((res, rej) => {
+    const tx = db.transaction(store, 'readwrite');
+    tx.objectStore(store).delete(id);
+    tx.oncomplete = () => res();
+    tx.onerror = e => rej(e);
+  });
+}
+
+// ==========================================
+// ESTADO
+// ==========================================
+let S = { sheets: {}, cur: null, config: { url:'', token:'' } };
+let selRow = null;
+let curTab = 'table';
+let isSyncing = false;
+let needsSync = false;
+
+async function boot() {
+  await initDB();
+  
+  // Registra o Service Worker para funcionar 100% offline
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js').catch(err => console.log('Erro SW:', err));
+  }
+
+  const sheets = await dbGetAll('sheets');
+  const cfg = await dbGet('config', 'main');
+  if(cfg) S.config = cfg;
+  
+  if (sheets.length === 0) {
+    const id = uid();
+    const sh = { id, name:'Planilha 1', columns:['Nome','Foto'], col_types:['text','photo'], rows:[['Exemplo','']], updated_at:Date.now(), dirty:true };
+    await dbPut('sheets', sh);
+    S.sheets[id] = sh;
+    S.cur = id;
+  } else {
+    sheets.forEach(s => S.sheets[s.id] = s);
+    S.cur = sheets[0].id; // just pick first
+  }
+  
+  document.getElementById('cfg-url').value = S.config.url || '';
+  document.getElementById('cfg-token').value = S.config.token || '';
+  
+  goTab('table');
+  updateNetworkStatus();
+  window.addEventListener('online', updateNetworkStatus);
+  window.addEventListener('offline', updateNetworkStatus);
+  
+  if(navigator.onLine) forceSync();
+}
+
+function uid() { return 'id_'+Date.now()+'_'+Math.random().toString(36).slice(2,6); }
+function cur() { return S.sheets[S.cur]; }
+
+async function persistSheet(id) {
+  let sh = S.sheets[id];
+  sh.updated_at = Date.now();
+  sh.dirty = true;
+  await dbPut('sheets', sh);
+  markNeedsSync();
+}
+
+// ==========================================
+// UI / NAVEGAÇÃO
+// ==========================================
+function setHeader(title, back) {
+  document.getElementById('hdr-title').textContent = title;
+  document.getElementById('hdr-back').style.display = back ? 'flex' : 'none';
+}
+
+function goBack() { goTab('table'); }
+
+function goTab(tab) {
+  curTab = tab;
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.tbtn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('screen-'+tab).classList.add('active');
+  document.getElementById('tab-'+tab).classList.add('active');
+  if (tab==='table')  { renderTable(); setHeader(cur().name, false); }
+  if (tab==='edit')   { renderEditForm(); }
+  if (tab==='cols')   { renderCols(); setHeader('Colunas', false); }
+  if (tab==='sheets') { renderSheets(); setHeader('Configurações', false); }
+}
+
+// ==========================================
+// TABELA
+// ==========================================
+async function renderTable() {
+  const d = cur();
+  const head = document.getElementById('tbl-head');
+  const body = document.getElementById('tbl-body');
+  const empty = document.getElementById('table-empty');
+
+  head.innerHTML = '<tr><th class="th-num"><div class="th-inner" style="justify-content:center">#</div></th>' +
+    d.columns.map((col,i) => `<th><div class="th-inner"><input class="th-input" type="text" value="${esc(col)}" oninput="renameColumn(${i},this.value)" onclick="event.stopPropagation()"/></div></th>`).join('') + '</tr>';
+
+  if (!d.rows.length) { body.innerHTML=''; empty.style.display='flex'; return; }
+  empty.style.display='none';
+  
+  let html = '';
+  for(let i=0; i<d.rows.length; i++) {
+    const row = d.rows[i];
+    let rowHtml = `<tr class="${selRow===i?'selected':''}" onclick="selectRow(${i})"><td class="num-cell">${i+1}</td>`;
+    for(let ci=0; ci<d.columns.length; ci++) {
+      let v = row[ci]||'';
+      if(d.col_types[ci]==='photo' && v.startsWith('file_')) {
+        let f = await dbGet('files', v);
+        rowHtml += `<td>${f && f.data ? `<img src="${f.data}" class="cell-thumb">` : '📷'}</td>`;
+      } else {
+        rowHtml += `<td class="${v?'':'empty-cell'}">${v||'—'}</td>`;
+      }
+    }
+    rowHtml += `</tr>`;
+    html += rowHtml;
+  }
+  body.innerHTML = html;
+}
+
+function selectRow(i) { selRow = i; renderTable(); goTab('edit'); }
+function addRow() { cur().rows.push(cur().columns.map(()=>'')); selRow = cur().rows.length - 1; persistSheet(S.cur); renderTable(); goTab('edit'); }
+function addRowFromEdit() { cur().rows.push(cur().columns.map(()=>'')); selRow = cur().rows.length - 1; persistSheet(S.cur); renderEditForm(); toast('Nova linha criada'); }
+
+function confirmDeleteRow() {
+  if (selRow===null || selRow>=cur().rows.length) return toast('Selecione uma linha primeiro');
+  showModal('Remover linha '+(selRow+1)+'?', '<p class="modal-p">Esta ação não pode ser desfeita.</p>', [
+    {label:'Cancelar',cls:''}, {label:'Remover',cls:'danger',fn:deleteRow}
+  ]);
+}
+function deleteRow() {
+  closeModal(); cur().rows.splice(selRow,1); selRow = cur().rows.length ? Math.min(selRow, cur().rows.length-1) : null; persistSheet(S.cur); renderTable(); renderEditForm(); toast('Removida');
+}
+
+// ==========================================
+// EDITAR LINHA
+// ==========================================
+async function renderEditForm() {
+  const d = cur();
+  const card = document.getElementById('edit-card');
+  const empty = document.getElementById('edit-empty');
+  const navInfo = document.getElementById('edit-nav-info');
+
+  if (selRow===null || !d.rows[selRow]) {
+    card.style.display='none'; empty.style.display='flex';
+    navInfo.textContent='—'; setHeader('Editar', false); return;
+  }
+
+  card.style.display='block'; empty.style.display='none';
+  navInfo.textContent = `Linha ${selRow+1} de ${d.rows.length}`;
+  document.getElementById('btn-prev').disabled = selRow===0;
+  document.getElementById('btn-next').disabled = selRow===d.rows.length-1;
+  setHeader(`Linha ${selRow+1}`, true);
+
+  let html = '';
+  for(let i=0; i<d.columns.length; i++) {
+    const col = d.columns[i];
+    const type = d.col_types[i] || 'text';
+    const val = d.rows[selRow][i] || '';
+    
+    html += `<div class="field-wrap"><span class="label-sm">${esc(col)}</span>`;
+    
+    if (type==='photo' || type==='file') {
+      let preview = '';
+      if (val.startsWith('file_')) {
+        let f = await dbGet('files', val);
+        if(f && f.data) {
+          preview = `<div class="file-preview">
+            ${type==='photo' ? `<img src="${f.data}">` : `<div class="file-icon"><svg viewBox="0 0 24 24"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline></svg></div>`}
+            <div class="file-info"><div class="file-name">${esc(f.name||'arquivo')}</div></div>
+            <button class="btn danger" style="height:32px;padding:0 10px" onclick="clearFile(${i})"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+          </div>`;
+        }
+      }
+      html += `
+        ${preview}
+        <div class="file-btns" style="${preview ? 'display:none;' : ''}">
+          <label class="btn full">
+            <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Escolher ${type==='photo'?'Foto':'Arquivo'}
+            <input type="file" accept="${type==='photo'?'image/*':'*'}" capture="${type==='photo'?'environment':''}" style="display:none" onchange="handleFileUpload(event, ${i})">
+          </label>
+        </div>`;
+    } else if (type==='date') {
+      html += `<input class="field-input" type="date" value="${esc(val)}" oninput="autoSaveField(${i},this.value)"/>`;
+    } else if (type==='number') {
+      html += `<input class="field-input" type="number" value="${esc(val)}" placeholder="0" oninput="autoSaveField(${i},this.value)"/>`;
+    } else {
+      html += `<input class="field-input" type="text" value="${esc(val)}" placeholder="Digite…" oninput="autoSaveField(${i},this.value)"/>`;
+    }
+    html += `</div>`;
+  }
+  document.getElementById('edit-fields').innerHTML = html;
+}
+
+function autoSaveField(i, val) { if (selRow!==null) { cur().rows[selRow][i] = val; persistSheet(S.cur); } }
+function navRow(dir) { if (selRow!==null && selRow+dir>=0 && selRow+dir<cur().rows.length) { selRow+=dir; renderEditForm(); } }
+
+// ==========================================
+// ARQUIVOS OFFLINE
+// ==========================================
+function handleFileUpload(e, colIdx) {
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = async ev => {
+    const dataUrl = ev.target.result;
+    const fileId = 'file_' + Date.now() + '_' + Math.random().toString(36).slice(2,6);
+    await dbPut('files', { id: fileId, name: file.name, type: file.type, data: dataUrl, sheet_id: S.cur, dirty: true });
+    autoSaveField(colIdx, fileId);
+    renderEditForm();
+  };
+  reader.readAsDataURL(file); // Stores as base64 in IndexedDB for simple offline support
+}
+async function clearFile(colIdx) {
+  const val = cur().rows[selRow][colIdx];
+  if(val.startsWith('file_')) await dbDelete('files', val);
+  autoSaveField(colIdx, '');
+  renderEditForm();
+}
+
+// ==========================================
+// COLUNAS
+// ==========================================
+function renderCols() {
+  const d = cur();
+  const types = {text:'Texto', number:'Número', date:'Data', photo:'Foto', file:'Arquivo'};
+  document.getElementById('cols-list').innerHTML = d.columns.map((col,i) => `
+    <div class="col-row">
+      <div class="drag-handle"><svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="18" x2="16" y2="18"/></svg></div>
+      <span class="col-num">${i+1}</span>
+      <input class="col-name-input" type="text" value="${esc(col)}" oninput="renameColumn(${i},this.value)"/>
+      <select class="col-type-sel" onchange="changeColType(${i},this.value)">
+        ${Object.keys(types).map(t => `<option value="${t}" ${d.col_types[i]===t?'selected':''}>${types[t]}</option>`).join('')}
+      </select>
+      <button class="col-del" onclick="confirmRemoveColumn(${i})"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg></button>
+    </div>
+  `).join('');
+}
+function renameColumn(i, name) { cur().columns[i] = name; persistSheet(S.cur); }
+function changeColType(i, type) { cur().col_types[i] = type; persistSheet(S.cur); }
+function addColumn() { cur().columns.push('Nova'); cur().col_types.push('text'); cur().rows.forEach(r=>r.push('')); persistSheet(S.cur); renderCols(); }
+function confirmRemoveColumn(i) {
+  if (cur().columns.length<=1) return toast('Precisa manter 1 coluna');
+  showModal(`Remover "${cur().columns[i]}"?`, '', [{label:'Cancelar',cls:''},{label:'Remover',cls:'danger',fn:()=>removeColumn(i)}]);
+}
+function removeColumn(i) { closeModal(); cur().columns.splice(i,1); cur().col_types.splice(i,1); cur().rows.forEach(r=>r.splice(i,1)); persistSheet(S.cur); renderCols(); }
+
+// ==========================================
+// PLANILHAS E CONFIG
+// ==========================================
+function renderSheets() {
+  const list = document.getElementById('sheets-list');
+  list.innerHTML = Object.values(S.sheets).map(s => `
+    <div class="sheet-row ${s.id===S.cur?'current':''}" onclick="openSheet('${s.id}')">
+      <div class="sheet-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg></div>
+      <div class="sheet-info">
+        <div class="sheet-name">${esc(s.name)}</div>
+        <div class="sheet-meta">${s.rows.length} linhas</div>
+      </div>
+    </div>
+  `).join('');
+}
+function openSheet(id) { S.cur=id; selRow=null; goTab('table'); }
+async function createSheet() {
+  const id=uid(); const sh = { id, name:'Nova Planilha', columns:['Col1'], col_types:['text'], rows:[], updated_at:Date.now(), dirty:true };
+  await dbPut('sheets', sh); S.sheets[id]=sh; openSheet(id); toast('Criada');
+}
+async function saveConfig() {
+  S.config.url = document.getElementById('cfg-url').value.trim();
+  S.config.token = document.getElementById('cfg-token').value.trim();
+  await dbPut('config', {id:'main', ...S.config});
+  toast('Configurações salvas');
+  forceSync();
+}
+
+// ==========================================
+// SYNC ENGINE (OFFLINE-FIRST)
+// ==========================================
+function updateNetworkStatus() {
+  const st = document.getElementById('sync-status');
+  const txt = document.getElementById('sync-text');
+  if(!navigator.onLine) { st.className='offline'; txt.textContent='Offline'; }
+  else if(isSyncing) { st.className='syncing'; txt.textContent='Sincronizando'; }
+  else if(needsSync) { st.className='pending'; txt.textContent='Pendente'; }
+  else { st.className='online'; txt.textContent='Sincronizado'; }
+}
+
+function markNeedsSync() { needsSync = true; updateNetworkStatus(); }
+
+async function forceSync() {
+  if(!navigator.onLine || !S.config.url) return;
+  isSyncing = true; updateNetworkStatus();
+  
+  try {
+    const headers = { 'Content-Type': 'application/json', 'x-auth-token': S.config.token };
+    
+    // 1. Enviar planilhas locais sujas
+    const sheets = await dbGetAll('sheets');
+    for(let sh of sheets) {
+      if(sh.dirty) {
+        const payload = { id: sh.id, name: sh.name, columns: sh.columns, col_types: sh.col_types, rows: sh.rows, updated_at: new Date(sh.updated_at).toISOString() };
+        let res = await fetch(S.config.url + '/sync', { method: 'POST', headers, body: JSON.stringify(payload) });
+        if(res.ok) { sh.dirty = false; await dbPut('sheets', sh); S.sheets[sh.id] = sh; }
+      }
+    }
+    
+    // 2. Enviar arquivos locais sujos
+    const files = await dbGetAll('files');
+    for(let f of files) {
+      if(f.dirty && f.data) {
+        // Converter base64 para blob
+        let res = await fetch(f.data);
+        let blob = await res.blob();
+        let fd = new FormData();
+        fd.append('file', blob, f.name);
+        fd.append('fileId', f.id);
+        fd.append('sheetId', f.sheet_id);
+        
+        let upRes = await fetch(S.config.url + '/upload', { method: 'POST', headers:{'x-auth-token': S.config.token}, body: fd });
+        if(upRes.ok) { f.dirty = false; await dbPut('files', f); }
+      }
+    }
+    
+    needsSync = false;
+    document.getElementById('sync-status').className='online';
+    document.getElementById('sync-text').textContent='Sincronizado';
+  } catch(e) {
+    document.getElementById('sync-status').className='error';
+    document.getElementById('sync-text').textContent='Erro Sync';
+    needsSync = true;
+  } finally {
+    isSyncing = false;
+  }
+}
+
+// ==========================================
+// UTIL
+// ==========================================
+function esc(s){return(s||'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function toast(msg){ const el=document.getElementById('toast'); el.textContent=msg; el.classList.add('show'); setTimeout(()=>el.classList.remove('show'),2000); }
+let mFns={};
+function showModal(title,bodyHTML,btns) {
+  mFns={}; document.getElementById('modal-title').textContent=title; document.getElementById('modal-body').innerHTML=bodyHTML;
+  document.getElementById('modal-btns').innerHTML=btns.map((b,i)=>{ if(b.fn) mFns['f'+i]=b.fn; return `<button class="btn ${b.cls||''}" onclick="${b.fn?'mFns.f'+i+'()':'closeModal()'}">${b.label}</button>`; }).join('');
+  document.getElementById('overlay').classList.add('open');
+}
+function closeModal(){document.getElementById('overlay').classList.remove('open');}
+function overlayClick(e){if(e.target===document.getElementById('overlay'))closeModal();}
+
+boot();
+</script>
+</body>
+</html>
