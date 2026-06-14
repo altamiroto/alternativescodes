@@ -228,6 +228,7 @@ tbody td.empty-cell{color:var(--t3);}
       <div class="card" id="sheets-list"></div>
       <div class="act-row">
         <button class="btn primary" onclick="createSheet()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Nova planilha</button>
+        <button class="btn" onclick="exportCSV()"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Exportar CSV</button>
       </div>
       <p class="hint" style="margin-top:10px;">Configurações do Servidor (VPS)</p>
       <div class="card">
@@ -591,6 +592,18 @@ async function saveConfig() {
   await dbPut('config', {id:'main', ...S.config});
   toast('Configurações salvas');
   forceSync();
+}
+
+async function exportCSV() {
+  const d = cur();
+  if(!d) return;
+  // Monta o CSV
+  const csv = [d.columns, ...d.rows].map(r => r.map(c => `"${(c||'').toString().replace(/"/g,'""')}"`).join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8'}));
+  a.download = (d.name||'planilha').replace(/\s+/g,'_') + '.csv';
+  a.click();
+  toast('CSV exportado');
 }
 
 // ==========================================
