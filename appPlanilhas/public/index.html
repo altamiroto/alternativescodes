@@ -613,6 +613,7 @@ function updateNetworkStatus() {
   const st = document.getElementById('sync-status');
   const txt = document.getElementById('sync-text');
   if(!navigator.onLine) { st.className='offline'; txt.textContent='Offline'; }
+  else if(!S.config.url) { st.className='offline'; txt.textContent='Somente Local'; }
   else if(isSyncing) { st.className='syncing'; txt.textContent='Sincronizando'; }
   else if(needsSync) { st.className='pending'; txt.textContent='Pendente'; }
   else { st.className='online'; txt.textContent='Sincronizado'; }
