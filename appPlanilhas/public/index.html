@@ -691,12 +691,19 @@ const apiBase = S.config.url ? S.config.url.replace(/\/sync$/, '') : '/api';
 fetch(apiBase + '/version')
   .then(res => res.json())
   .then(data => {
-    if(data && data.version && data.version !== 'unknown') {
-      const vEl = document.getElementById('app-version-txt');
-      if(vEl) vEl.textContent = 'v5.0 (' + data.version.substring(0,7) + ')';
+    const vEl = document.getElementById('app-version-txt');
+    if(vEl) {
+      if(data && data.version && data.version !== 'unknown') {
+        vEl.textContent = 'v5.0 (' + data.version.substring(0,7) + ')';
+      } else {
+        vEl.textContent = 'v5.0';
+      }
     }
   })
-  .catch(() => {});
+  .catch(() => {
+    const vEl = document.getElementById('app-version-txt');
+    if(vEl) vEl.textContent = 'v5.0';
+  });
 
 </script>
 </body>

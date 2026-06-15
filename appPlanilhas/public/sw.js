@@ -1,4 +1,4 @@
-const CACHE_NAME = 'planilha-v9-cache';
+const CACHE_NAME = 'planilha-v10-cache';
 const ASSETS = [
   './',
   './index.html',
