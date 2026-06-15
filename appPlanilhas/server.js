@@ -247,12 +247,20 @@ app.get('/api/export/:sheetId', auth, async (req, res) => {
 
 // ── Versão do sistema ───────────────────────────────────
 app.get('/api/version', (req, res) => {
+  const fs = require('fs');
+  const path = require('path');
   try {
-    const cp = require('child_process');
-    const hash = cp.execSync('git rev-parse --short HEAD').toString().trim();
-    res.json({ version: hash });
-  } catch (e) {
-    res.json({ version: process.env.SOURCE_VERSION || process.env.COMMIT_SHA || process.env.GIT_COMMIT_SHA || 'unknown' });
+    const data = JSON.parse(fs.readFileSync(path.join(__dirname, 'version.json'), 'utf8'));
+    if (data.version && data.version !== 'sem-git') return res.json(data);
+    throw new Error('Fallback to git rev-parse');
+  } catch(e) {
+    try {
+      const cp = require('child_process');
+      const hash = cp.execSync('git rev-parse --short HEAD').toString().trim();
+      res.json({ version: hash });
+    } catch (e2) {
+      res.json({ version: 'unknown' });
+    }
   }
 });
 

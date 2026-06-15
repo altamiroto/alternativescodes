@@ -4,6 +4,7 @@
   "description": "Servidor de sincronização para o Planilha Offline v4",
   "main": "server.js",
   "scripts": {
+    "build": "node -e \"require('fs').writeFileSync('version.json', JSON.stringify({version: (process.env.NIXPACKS_GIT_SHA || process.env.COMMIT_SHA || process.env.GIT_COMMIT_SHA || 'sem-git').substring(0,7)}))\"",
     "start": "node server.js"
   },
   "dependencies": {
