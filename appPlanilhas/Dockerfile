@@ -18,6 +18,9 @@ RUN mkdir -p /app/uploads && chown -R node:node /app/uploads
 # Usar usuário sem privilégios root para segurança
 USER node
 
+# Criar arquivo de versão com a data do build (para controle na interface)
+RUN echo $(date +'%d/%m %H:%M') > /app/public/version.txt
+
 # A porta padrão que o servidor Express usa
 EXPOSE 3737
 

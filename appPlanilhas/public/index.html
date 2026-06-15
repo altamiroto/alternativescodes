@@ -165,7 +165,7 @@ tbody td.empty-cell{color:var(--t3);}
           <div class="sync-dot"></div>
           <span id="sync-text">Offline</span>
         </div>
-        <div style="font-size:9px; color:var(--t3); margin-top:2px; margin-right:4px; letter-spacing:0.5px;">v5.0 (34a8f53)</div>
+        <div id="app-version-txt" style="font-size:9px; color:var(--t3); margin-top:2px; margin-right:4px; letter-spacing:0.5px;">Atualizando...</div>
       </div>
     </div>
   </div>
@@ -685,6 +685,16 @@ function closeModal(){document.getElementById('overlay').classList.remove('open'
 function overlayClick(e){if(e.target===document.getElementById('overlay'))closeModal();}
 
 boot();
+
+// Buscar versão do build do servidor
+fetch('./version.txt?t=' + Date.now())
+  .then(res => res.ok ? res.text() : 'v5.0')
+  .then(text => {
+    const vEl = document.getElementById('app-version-txt');
+    if(vEl) vEl.textContent = 'Build: ' + text.trim();
+  })
+  .catch(() => {});
+
 </script>
 </body>
 </html>
