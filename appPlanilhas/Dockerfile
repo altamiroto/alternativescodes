@@ -18,6 +18,11 @@ RUN mkdir -p /app/uploads && chown -R node:node /app/uploads
 # Usar usuário sem privilégios root para segurança
 USER node
 
+# Instalar git para que o Node consiga ler a versão com child_process
+USER root
+RUN apk add --no-cache git
+USER node
+
 # A porta padrão que o servidor Express usa
 EXPOSE 3737
 

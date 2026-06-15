@@ -686,13 +686,14 @@ function overlayClick(e){if(e.target===document.getElementById('overlay'))closeM
 
 boot();
 
-// Buscar a versão (hash do commit) diretamente da API do GitHub para não depender de cache do Docker
-fetch('https://api.github.com/repos/altamiroto/alternativescodes/commits/main')
+// Buscar a versão REAL que o servidor backend está rodando no momento
+const apiBase = S.config.url ? S.config.url.replace(/\/sync$/, '') : '/api';
+fetch(apiBase + '/version')
   .then(res => res.json())
   .then(data => {
-    if(data && data.sha) {
+    if(data && data.version && data.version !== 'unknown') {
       const vEl = document.getElementById('app-version-txt');
-      if(vEl) vEl.textContent = 'v5.0 (' + data.sha.substring(0,7) + ')';
+      if(vEl) vEl.textContent = 'v5.0 (' + data.version.substring(0,7) + ')';
     }
   })
   .catch(() => {});

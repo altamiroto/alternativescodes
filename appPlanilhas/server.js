@@ -245,6 +245,17 @@ app.get('/api/export/:sheetId', auth, async (req, res) => {
   }
 });
 
+// ── Versão do sistema ───────────────────────────────────
+app.get('/api/version', (req, res) => {
+  try {
+    const cp = require('child_process');
+    const hash = cp.execSync('git rev-parse --short HEAD').toString().trim();
+    res.json({ version: hash });
+  } catch (e) {
+    res.json({ version: process.env.SOURCE_VERSION || process.env.COMMIT_SHA || process.env.GIT_COMMIT_SHA || 'unknown' });
+  }
+});
+
 // ─── Start ───────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`🚀 Servidor rodando na porta ${PORT}`);
