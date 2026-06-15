@@ -165,7 +165,7 @@ tbody td.empty-cell{color:var(--t3);}
           <div class="sync-dot"></div>
           <span id="sync-text">Offline</span>
         </div>
-        <div id="app-version-txt" style="font-size:9px; color:var(--t3); margin-top:2px; margin-right:4px; letter-spacing:0.5px;">Atualizando...</div>
+        <div id="app-version-txt" style="font-size:9px; color:var(--t3); margin-top:2px; margin-right:4px; letter-spacing:0.5px;">v5.0 (7fc2280)</div>
       </div>
     </div>
   </div>
@@ -685,25 +685,6 @@ function closeModal(){document.getElementById('overlay').classList.remove('open'
 function overlayClick(e){if(e.target===document.getElementById('overlay'))closeModal();}
 
 boot();
-
-// Buscar a versão REAL que o servidor backend está rodando no momento
-const apiBase = S.config.url ? S.config.url.replace(/\/sync$/, '') : '/api';
-fetch(apiBase + '/version')
-  .then(res => res.json())
-  .then(data => {
-    const vEl = document.getElementById('app-version-txt');
-    if(vEl) {
-      if(data && data.version && data.version !== 'unknown') {
-        vEl.textContent = 'v5.0 (' + data.version.substring(0,7) + ')';
-      } else {
-        vEl.textContent = 'v5.0';
-      }
-    }
-  })
-  .catch(() => {
-    const vEl = document.getElementById('app-version-txt');
-    if(vEl) vEl.textContent = 'v5.0';
-  });
 
 </script>
 </body>
