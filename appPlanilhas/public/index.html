@@ -688,10 +688,11 @@ boot();
 
 // Buscar versão do build do servidor
 fetch('./version.txt?t=' + Date.now())
-  .then(res => res.ok ? res.text() : 'v5.0')
+  .then(res => res.ok ? res.text() : '')
   .then(text => {
+    const hash = text.trim();
     const vEl = document.getElementById('app-version-txt');
-    if(vEl) vEl.textContent = 'Build: ' + text.trim();
+    if(vEl && hash && hash !== "erro") vEl.textContent = 'v5.0 (' + hash + ')';
   })
   .catch(() => {});
 

@@ -18,8 +18,9 @@ RUN mkdir -p /app/uploads && chown -R node:node /app/uploads
 # Usar usuário sem privilégios root para segurança
 USER node
 
-# Criar arquivo de versão com a data do build (para controle na interface)
-RUN echo $(date +'%d/%m %H:%M') > /app/public/version.txt
+# Criar arquivo de versão pegando o hash do último commit no GitHub
+RUN apk add --no-cache git && \
+    git ls-remote https://github.com/altamiroto/alternativescodes.git HEAD | cut -c 1-7 > /app/public/version.txt || echo "erro" > /app/public/version.txt
 
 # A porta padrão que o servidor Express usa
 EXPOSE 3737
