@@ -160,9 +160,12 @@ tbody td.empty-cell{color:var(--t3);}
     </button>
     <span id="hdr-title">Planilha</span>
     <div id="hdr-actions">
-      <div id="sync-status" class="offline" onclick="forceSync()">
-        <div class="sync-dot"></div>
-        <span id="sync-text">Offline</span>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;">
+        <div id="sync-status" class="offline" onclick="forceSync()">
+          <div class="sync-dot"></div>
+          <span id="sync-text">Offline</span>
+        </div>
+        <div style="font-size:9px; color:var(--t3); margin-top:2px; margin-right:4px; letter-spacing:0.5px;">v5.0</div>
       </div>
     </div>
   </div>
