@@ -1,0 +1,160 @@
+{
+  "name": "Comandos Admin (Para copiar para o fluxo principal)",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "const json = $input.item.json;\n\n// 1. Pegar as variáveis que já vieram mastigadas do nó de Filtro!\nconst texto = json.captionText || '';\nconst remetenteId = json.remetenteId || '';\n// Às vezes o participant oficial vem no participantAlt\nconst altRemetenteId = json.rawFullData?.key?.participantAlt || '';\n\nconst grupoId = json.grupoId || '';\nconst grupoNome = json.grupoNome || '';\n\n// 2. Verificar se é um comando\nif (!texto.startsWith('/')) {\n  return []; // Se não for comando, ignora este caminho\n}\n\n// 3. WHITELIST - Coloque os números dos Administradores autorizados aqui!\n// Formato: 55DDDNUMERO@s.whatsapp.net\nconst admins = [\n  \"5511999999999@s.whatsapp.net\", \n  \"553391357195@s.whatsapp.net\"\n];\n\nif (!admins.includes(remetenteId) && !admins.includes(altRemetenteId)) {\n  return []; // Se não for admin, morre aqui silenciosamente (não retorna erro)\n}\n\n// 4. Quebrar o comando (Ex: /cancelar X7K2A Valor errado)\nconst partes = texto.trim().split(' ');\nconst comando = partes[0].substring(1).toLowerCase(); // tirar a barra\n\nlet payload = {\n  action: \"comando_admin\",\n  comando: comando,\n  remetenteId: remetenteId,\n  grupoId: grupoId,\n  grupoNome: grupoNome,\n  idAlvo: \"\",\n  valor: 0,\n  motivo: \"\"\n};\n\nif (comando === \"cancelar\") {\n  payload.idAlvo = partes[1] || \"\";\n  payload.motivo = partes.slice(2).join(' ');\n} else if (comando === \"entrada\" || comando === \"retirada\") {\n  payload.valor = partes[1] || \"0\";\n  payload.motivo = partes.slice(2).join(' ');\n} else {\n  return [{ json: { erro: \"Comando inválido. Use /cancelar, /entrada ou /retirada.\", grupoId, remetenteId } }];\n}\n\nreturn [{ json: payload }];"
+      },
+      "id": "parse-comandos",
+      "name": "Parse Comandos Admin",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [200, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.erro }}",
+              "operation": "isEmpty"
+            }
+          ]
+        }
+      },
+      "id": "check-erro",
+      "name": "Tem Erro de Comando?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [400, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://script.google.com/macros/s/AKfycbxfF24HFoi3L4RNFb8sA6L6aJbuFG12Er5wdZBf01pTYww0_dy5kz5xr9wj8n7CXSaNkA/exec",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "redirect": {
+            "redirect": {
+              "maxRedirects": 5
+            }
+          }
+        }
+      },
+      "id": "send-apps-script",
+      "name": "Apps Script Admin",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [600, -100]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://principal-evolution-api.9h4afz.easypanel.host/message/sendText/roboControle",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "F82872785DC8-4DB3-88C2-FB01EDBEDB88"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"number\": \"{{ $json.grupoId }}\",\n  \"text\": \"{{ $json.erro }}\"\n}",
+        "options": {}
+      },
+      "id": "send-erro",
+      "name": "Enviar Erro Wpp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [600, 100]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://principal-evolution-api.9h4afz.easypanel.host/message/sendText/roboControle",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "F82872785DC8-4DB3-88C2-FB01EDBEDB88"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"number\": \"{{ $('Parse Comandos Admin').item.json.grupoId }}\",\n  \"text\": \"{{ $json.erro || $json.dados?.msg }}\"\n}",
+        "options": {}
+      },
+      "id": "send-sucesso",
+      "name": "Enviar Sucesso Wpp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [800, -100]
+    }
+  ],
+  "connections": {
+    "Parse Comandos Admin": {
+      "main": [
+        [
+          {
+            "node": "Tem Erro de Comando?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tem Erro de Comando?": {
+      "main": [
+        [
+          {
+            "node": "Apps Script Admin",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Enviar Erro Wpp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apps Script Admin": {
+      "main": [
+        [
+          {
+            "node": "Enviar Sucesso Wpp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

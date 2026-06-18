@@ -1,0 +1,132 @@
+{
+  "name": "Fechamento Diário - Grupos",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 23 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Gatilho Diário (23h)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://script.google.com/macros/s/AKfycbxfF24HFoi3L4RNFb8sA6L6aJbuFG12Er5wdZBf01pTYww0_dy5kz5xr9wj8n7CXSaNkA/exec",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"action\": \"fechamento\"}",
+        "options": {}
+      },
+      "id": "pedir-totais",
+      "name": "Pedir Totais",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [200, 0]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "dados.relatorios",
+        "options": {}
+      },
+      "id": "split-out",
+      "name": "Separar por Grupo",
+      "type": "n8n-nodes-base.itemLists",
+      "typeVersion": 3,
+      "position": [400, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const relatorio = $('Separar por Grupo').item.json;\n\nconst fmt = (v) => 'R$ ' + parseFloat(v).toFixed(2).replace('.',',').replace(/\\B(?=(\\d{3})+(?!\\d))/g, '.');\n\nconst msg = `*Fechamento do dia ${relatorio.hoje}*\\n\\nRecebido: ${fmt(relatorio.recebido)}\\nPago: ${fmt(relatorio.pago)}\\nTaxas: ${fmt(relatorio.taxas)}\\nTransações: ${relatorio.transacoes}\\n\\n*Saldo final: ${fmt(relatorio.saldoFinal)}*\\n\\nValidar!`;\n\nreturn [{ json: {\n  grupoId: relatorio.grupoId,\n  mensagem: msg\n}}];"
+      },
+      "id": "montar-msg",
+      "name": "Montar Mensagem",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [600, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://principal-evolution-api.9h4afz.easypanel.host/message/sendText/roboControle",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "F82872785DC8-4DB3-88C2-FB01EDBEDB88"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"number\": {{ JSON.stringify($json.grupoId) }},\n  \"text\": {{ JSON.stringify($json.mensagem) }}\n}",
+        "options": {}
+      },
+      "id": "enviar-wpp",
+      "name": "Enviar WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [800, 0]
+    }
+  ],
+  "connections": {
+    "Gatilho Diário (23h)": {
+      "main": [
+        [
+          {
+            "node": "Pedir Totais",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pedir Totais": {
+      "main": [
+        [
+          {
+            "node": "Separar por Grupo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Separar por Grupo": {
+      "main": [
+        [
+          {
+            "node": "Montar Mensagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar Mensagem": {
+      "main": [
+        [
+          {
+            "node": "Enviar WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

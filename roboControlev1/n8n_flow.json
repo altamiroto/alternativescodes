@@ -1,0 +1,1080 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "roboControle",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "e8cf04d7-756a-4d78-b6be-80790011d5c7",
+      "name": "Webhook Evolution",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -6224,
+        5536
+      ],
+      "webhookId": "5c79186f-29e6-42e2-8e9e-8c2bb562eecc"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Filtra APENAS mensagens de GRUPO com IMAGEM ou PDF ou COMANDOS\nconst body = $input.item.json.body || $input.item.json;\nconst data = body.data || body;\n\nconst isGroup = (data.key?.remoteJid || '').endsWith('@g.us');\n\nconst hasImage = !!(data.message?.imageMessage || data.message?.documentWithCaptionMessage?.message?.imageMessage || data.message?.viewOnceMessage?.message?.imageMessage || data.message?.viewOnceMessageV2?.message?.imageMessage);\n\nconst strMessage = JSON.stringify(data.message || {});\nconst hasPDF = strMessage.includes('application/pdf');\n\n// Verifica se é comando de texto\nconst textMsg = data.message?.extendedTextMessage?.text || data.message?.conversation || '';\nconst isCommand = textMsg.trim().startsWith('/');\n\nif (!isGroup || (!hasImage && !hasPDF && !isCommand)) {\n  return [{ json: { skip: true } }];\n}\n\nconst remoteJid = data.key?.remoteJid || '';\nconst grupoId = remoteJid;\nconst grupoNome = data.pushName || data.verifiedBizName || remoteJid;\nconst remetenteId = data.key?.participant || data.participant || '';\nconst msgTimestamp = new Date((data.messageTimestamp || Date.now() / 1000) * 1000).toISOString();\n\nlet mimeType = 'image/jpeg';\nlet captionText = textMsg; // Para comandos, passamos o próprio texto como caption\n\nif (data.message?.imageMessage) {\n  captionText = data.message.imageMessage.caption || '';\n  mimeType = data.message.imageMessage.mimetype || 'image/jpeg';\n} else if (hasPDF) {\n  captionText = strMessage.match(/\"caption\":\"([^\"]*)\"/)?.[1] || '';\n  mimeType = 'application/pdf';\n}\n\n// rawFullData = objeto COMPLETO que a Evolution precisa receber\nreturn [{\n  json: {\n    skip: false,\n    isCommand,\n    grupoId,\n    grupoNome,\n    remetenteId,\n    msgTimestamp,\n    mimeType,\n    captionText,\n    remoteJid,\n    rawFullData: data,\n    messageId: data.key?.id || ''\n  }\n}];\n"
+      },
+      "id": "8b28a4f1-f4df-4c6e-937d-750befcd75a1",
+      "name": "Filtrar Grupos + Imagem",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -6048,
+        5536
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://principal-evolution-api.9h4afz.easypanel.host/chat/getBase64FromMediaMessage/roboControle",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "F82872785DC8-4DB3-88C2-FB01EDBEDB88"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ message: $json.rawFullData, convertToMp4: false }) }}",
+        "options": {}
+      },
+      "id": "2c26fffa-57c9-4a4b-80c5-45195ad474f8",
+      "name": "Baixar Mídia (Base64)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -5264,
+        5376
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepara payload para IA\nconst base64 = $('Baixar Mídia (Base64)').item.json.base64 || '';\nconst mimeType = $('Filtrar Grupos + Imagem').item.json.mimeType || 'image/jpeg';\nconst caption = $('Filtrar Grupos + Imagem').item.json.captionText || '';\n\nif (!base64) {\n  return [{ json: { error: 'Base64 vazio', ...$('Filtrar Grupos + Imagem').item.json } }];\n}\n\n// 1. Pega o prompt base que você configurou no \"Edit Fields\" (Dados da IA)\nlet promptBase = $('Dados da IA').item.json.prompt1;\n\n// 2. Concatena a mensagem que o cliente enviou no WhatsApp\nconst prompt = promptBase + `\\n\\nTexto adicional da mensagem do cliente: ${caption}`;\n\nreturn [{\n  json: {\n    base64,\n    mimeType,\n    prompt,\n    context: $('Filtrar Grupos + Imagem').item.json\n  }\n}];\n"
+      },
+      "id": "130652d6-480c-4c69-957f-b5b3ec17b659",
+      "name": "Preparar Prompt IA",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4912,
+        5376
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://generativelanguage.googleapis.com/v1beta/models/{{ $('Dados da IA').item.json.modeloIAgemini }}:generateContent?key={{ $('Dados da IA').item.json.geminiToken }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"contents\": [{\n    \"parts\": [\n      { \"text\": {{ JSON.stringify($('Preparar Prompt IA').item.json.prompt) }} },\n      { \"inline_data\": { \"mime_type\": {{ JSON.stringify($('Preparar Prompt IA').item.json.mimeType) }}, \"data\": {{ JSON.stringify($('Preparar Prompt IA').item.json.base64) }} } }\n    ]\n  }],\n  \"generationConfig\": {\n    \"temperature\": 0.1,\n    \"maxOutputTokens\": 1024\n  }\n}\n",
+        "options": {}
+      },
+      "id": "0d3ae5e0-2fc3-4d5d-bccd-f62d96a33b63",
+      "name": "Google Gemini (IA)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -4672,
+        5280
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse resposta Gemini OU OpenRouter (Backup)\nlet raw = '';\ntry {\n  // Tenta puxar o formato do Google Gemini primeiro\n  raw = $input.item.json.candidates?.[0]?.content?.parts?.[0]?.text;\n  \n  // Se veio vazio, significa que é do OpenRouter, então puxa o formato dele\n  if (!raw) {\n    raw = $input.item.json.choices?.[0]?.message?.content;\n  }\n} catch(e) { raw = ''; }\n\nraw = (raw || '').trim();\nif (raw.startsWith('```')) {\n  raw = raw.replace(/^```[a-z]*\\n?/,'').replace(/```$/,'').trim();\n}\n\nconst context = $('Preparar Prompt IA').item.json.context;\n\nif (!raw || raw === 'null') {\n  return [{ json: { identificado: false, context, rawResponse: raw } }];\n}\n\nlet parsed;\ntry { parsed = JSON.parse(raw); } catch(e) {\n  return [{ json: { identificado: false, context, rawResponse: raw, parseError: e.message } }];\n}\n\nif (!parsed || !parsed.tipo) {\n  return [{ json: { identificado: false, context, rawResponse: raw } }];\n}\n\n// Validações mínimas — CARTAO\nif (parsed.tipo === 'CARTAO') {\n  if (!parsed.valor || !parsed.parcelas) {\n    return [{ json: { identificado: false, context, rawResponse: raw, motivo: 'CARTAO sem valor ou parcelas' } }];\n  }\n  // Bandeira é OBRIGATÓRIA — sem ela o comprovante é inválido\n  const bandeira = (parsed.bandeira || '').toString().trim();\n  const bandeiraInvalida = !bandeira || bandeira.toLowerCase() === 'null' || bandeira.toLowerCase() === 'desconhecida' || bandeira.toLowerCase() === 'outro';\n  if (bandeiraInvalida) {\n    return [{ json: { identificado: false, context, rawResponse: raw, motivo: 'CARTAO sem bandeira identificada' } }];\n  }\n}\n\n// Validações mínimas — PIX\nif (parsed.tipo === 'PIX') {\n  if (!parsed.valor || !parsed.bancoOrigem || !parsed.bancoDestino) {\n    return [{ json: { identificado: false, context, rawResponse: raw, motivo: 'PIX sem valor/origem/destino' } }];\n  }\n}\n\nreturn [{ json: { identificado: true, dados: parsed, context } }];\n"
+      },
+      "id": "73adaac7-178c-4fdd-bb33-5507f5555276",
+      "name": "Parsear Resposta IA",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4416,
+        5488
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "cond_id",
+              "leftValue": "={{ $json.identificado }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "5beb6b4e-79b5-4f8b-b5cf-baee74644df1",
+      "name": "Comprovante Identificado?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -4256,
+        5488
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://script.google.com/macros/s/AKfycbxfF24HFoi3L4RNFb8sA6L6aJbuFG12Er5wdZBf01pTYww0_dy5kz5xr9wj8n7CXSaNkA/exec",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  tipo: $json.dados.tipo,\n  grupoId: $json.context.grupoId,\n  grupoNome: $json.context.grupoNome,\n  remetenteId: $json.context.remetenteId,\n  msgTimestamp: $json.context.msgTimestamp,\n  valor: $json.dados.valor,\n  bandeira: $json.dados.bandeira || null,\n  banco: $json.dados.banco || null,\n  empresaMaquininha: $json.dados.empresaMaquininha || null,\n  parcelas: $json.dados.parcelas || null,\n  autenticacao: $json.dados.autenticacao || null,\n  bancoOrigem: $json.dados.bancoOrigem || null,\n  nomePagador: $json.dados.nomePagador || null,\n  bancoDestino: $json.dados.bancoDestino || null,\n  nomeRecebedor: $json.dados.nomeRecebedor || null,\n  codigoIdentificacao: $json.dados.codigoIdentificacao || null,\n  codigoAutenticacao: $json.dados.codigoAutenticacao || null,\n  data: $json.dados.data || null,\n  hora: $json.dados.hora || null\n}) }}",
+        "options": {
+          "redirect": {
+            "redirect": {
+              "maxRedirects": 5
+            }
+          }
+        }
+      },
+      "id": "f38f787e-0b1e-4d12-95aa-61fc04cd8136",
+      "name": "Gravar Google Sheets",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -4016,
+        5408
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Verifica se o Apps Script confirmou gravação\nconst resp = $input.item.json;\nconst dadosAI = $('Parsear Resposta IA').item.json;\n\nif (!resp.sucesso) {\n  return [{ json: { gravado: false, erro: resp.erro || 'Falha no script', dadosAI, dadosScript: resp.dados } }];\n}\n\nconst d = resp.dados;\nconst fmt = (v) => {\n  const n = parseFloat(v);\n  return isNaN(n) ? 'N/D' : 'R$ ' + n.toFixed(2).replace('.',',').replace(/\\B(?=(\\d{3})+(?!\\d))/g, '.');\n};\n\nconst pct = d.taxa !== undefined ? d.taxa : 0;\nconst valorTaxaStr = fmt(d.valorTaxa || 0);\n\nconst strPix = fmt(d.saldoPix || 0);\nconst strCartao = fmt(d.saldoCartao || 0);\nconst strTotal = fmt(d.saldoTotal || 0);\nconst strAnterior = fmt((d.saldoTotal || 0) - (d.valorLiq || 0));\n\nlet mensagem = '';\n\nif (d.tipo === 'CARTAO') {\n  const parcelaLabel = (dadosAI.dados?.parcelas || 'N/D');\n  mensagem = `💳 *Comprovante Cartão Registrado*✅\\n\\n`\n    + `💰 *Valor Líquido: ${fmt(d.valorLiq)}*\\n\\n`\n    + `Parcela: Cartão ${parcelaLabel} | Bruto: ${fmt(d.valorBruto)} | Taxa: ${pct}% (${valorTaxaStr})\\n`\n    + `Banco: ${d.banco || 'N/D'} | ${d.empresaMaquininha || 'N/D'}\\n`\n    + `Bandeira: ${d.bandeira || 'N/D'}\\n`\n    + `Data: ${dadosAI.dados?.data || 'N/D'} ${dadosAI.dados?.hora || ''}\\n`\n    + `Autenticação: ${d.autenticacao || dadosAI.dados?.codigoAutenticacao || dadosAI.dados?.autenticacao || 'N/D'}\\n\\n`\n    + `📊 *Saldo atual Cartão: ${strCartao}*\\n`\n    + `📊 *Saldo atual Pix: ${strPix}*\\n\\n`\n    + `💱 *Saldo anterior total: ${strAnterior}*\\n`\n    + `💵 *Saldo atual total: ${strTotal}*\\n\\n`\n    + `🆔 Lançamento: ${d.id || 'N/D'}\\n`\n    + `🆔 Grupo: ${dadosAI.context?.grupoNome || ''}`;\n} else {\n  mensagem = `🪙 *Comprovante Pix Registrado* ✅\\n\\n`\n    + `💰 *Valor Líquido: ${fmt(d.valorLiq)}*\\n\\n`\n    + `Parcela: PIX | Bruto: ${fmt(d.valorBruto)} | Taxa: ${pct}% (${valorTaxaStr})\\n`\n    + `Banco de Origem: ${d.bancoOrigem || 'N/D'} | Pagador: ${d.nomePagador || 'N/D'}\\n`\n    + `Banco de Destino: ${d.bancoDestino || 'N/D'} | Recebedor: ${d.nomeRecebedor || 'N/D'}\\n`\n    + `Data: ${dadosAI.dados?.data || 'N/D'} ${dadosAI.dados?.hora || ''}\\n`\n    + `Autenticação: ${d.codigoAutenticacao || dadosAI.dados?.codigoAutenticacao || dadosAI.dados?.autenticacao || 'N/D'}\\n\\n`\n    + `📊 *Saldo atual Cartão: ${strCartao}*\\n`\n    + `📊 *Saldo atual Pix: ${strPix}*\\n\\n`\n    + `💱 *Saldo anterior total: ${strAnterior}*\\n`\n    + `💵 *Saldo atual total: ${strTotal}*\\n\\n`\n    + `🆔 Lançamento: ${d.id || 'N/D'}\\n`\n    + `🆔 Grupo: ${dadosAI.context?.grupoNome || ''}`;\n}\n\nreturn [{ json: {\n  gravado: true,\n  mensagem,\n  remoteJid: dadosAI.context?.remoteJid,\n  grupoId: dadosAI.context?.grupoId\n} }];\n"
+      },
+      "id": "1eb718a5-5ab6-480d-99f5-8cfb46eee4d5",
+      "name": "Montar Resposta Sucesso",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3776,
+        5408
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "cond_gravado",
+              "leftValue": "={{ $json.gravado }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "7031cf0d-5717-4460-af5a-7fb459ad03fd",
+      "name": "Gravação OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -3536,
+        5408
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://principal-evolution-api.9h4afz.easypanel.host/message/sendText/roboControle",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "F82872785DC8-4DB3-88C2-FB01EDBEDB88"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"number\": {{ JSON.stringify($json.remoteJid) }},\n  \"text\": {{ JSON.stringify($json.mensagem) }}\n}",
+        "options": {}
+      },
+      "id": "de2233fd-2152-4831-ab22-ac14139dd24d",
+      "name": "Enviar Sucesso WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -3296,
+        5328
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://principal-evolution-api.9h4afz.easypanel.host/message/sendText/roboControle",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "F82872785DC8-4DB3-88C2-FB01EDBEDB88"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"number\": {{ JSON.stringify($('Parsear Resposta IA').item.json.context?.remoteJid) }},\n  \"text\": {{ JSON.stringify($json.erro === 'COMPROVANTE_DUPLICADO' ? '⚠️ *Comprovante já registrado!*\\n\\nEste comprovante já existe na planilha e foi ignorado para evitar duplicidade.\\nAutenticação: ' + ($('Parsear Resposta IA').item.json.dados?.codigoAutenticacao || $('Parsear Resposta IA').item.json.dados?.autenticacao || 'N/D') + '\\nValor Bruto: R$ ' + parseFloat($json.dadosScript?.duplicadoBruto || 0).toFixed(2).replace('.', ',') + '\\nRegistrado na planilha em: ' + ($json.dadosScript?.duplicadoData || 'N/D') : '❌ *ERRO NA GRAVAÇÃO*\\n\\nO comprovante foi identificado mas houve falha ao registrar na planilha.\\nErro: ' + ($json.erro || 'desconhecido')) }}\n}",
+        "options": {}
+      },
+      "id": "4f2d5de9-5518-4339-8dde-b22cb3d5ea39",
+      "name": "Erro Gravação → WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -3296,
+        5520
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://principal-evolution-api.9h4afz.easypanel.host/message/sendText/roboControle",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "F82872785DC8-4DB3-88C2-FB01EDBEDB88"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"number\": {{ JSON.stringify($json.context?.remoteJid) }},\n  \"text\": {{ JSON.stringify('⚠️ *IMAGEM NÃO IDENTIFICADA / NÃO NÍTIDA*\\n\\nA imagem enviada não pôde ser reconhecida como comprovante válido.\\nVerifique se é um comprovante de cartão ou PIX com todos os dados visíveis e tente novamente.') }}\n}",
+        "options": {}
+      },
+      "id": "63657db8-3d5c-4fe1-87e5-580222a3ea55",
+      "name": "Não Identificado → WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -4016,
+        5616
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "noData",
+        "options": {}
+      },
+      "id": "e8eaa8da-f9ae-4598-8b9c-4be1c4eaf95e",
+      "name": "Responder Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        -2864,
+        5632
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Captura erros gerais e monta mensagem de erro detalhada\nconst ctx = $('Filtrar Grupos + Imagem').first()?.json || {};\nconst erroMsg = $input.item.json?.message || $input.item.json?.error || JSON.stringify($input.item.json);\n\nreturn [{\n  json: {\n    remoteJid: ctx.remoteJid || '',\n    mensagemErro: `🚨 *ERRO NO PROCESSAMENTO*\\n\\nOcorreu um erro ao processar o comprovante:\\n${erroMsg}\\n\\nGrupo: ${ctx.grupoId || 'N/D'}`\n  }\n}];\n"
+      },
+      "id": "a5b8b264-4197-4a5f-9da3-4db464282370",
+      "name": "Tratar Erro Geral",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4768,
+        5824
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://principal-evolution-api.9h4afz.easypanel.host/message/sendText/roboControle",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "F82872785DC8-4DB3-88C2-FB01EDBEDB88"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"number\": {{ JSON.stringify($json.remoteJid) }},\n  \"text\": {{ JSON.stringify($json.mensagemErro) }}\n}",
+        "options": {}
+      },
+      "id": "ddb1561d-585c-4d38-9203-8ec576872f4f",
+      "name": "Enviar Erro Geral → WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -4432,
+        5840
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://openrouter.ai/api/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Dados da IA').item.json.openRouterToken }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": {{ JSON.stringify($('Dados da IA').item.json.modeloIAopen) }},\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": [\n        { \n          \"type\": \"text\", \n          \"text\": {{ JSON.stringify($('Preparar Prompt IA').item.json.prompt) }} \n        },\n        { \n          \"type\": \"image_url\", \n          \"image_url\": { \n            \"url\": {{ JSON.stringify(\"data:\" + $('Preparar Prompt IA').item.json.mimeType + \";base64,\" + $('Preparar Prompt IA').item.json.base64) }} \n          } \n        }\n      ]\n    }\n  ]\n}\n",
+        "options": {}
+      },
+      "id": "b466d652-7364-4fb2-b655-3b69d0c8b835",
+      "name": "OpenRouter (Backup)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -4672,
+        5568
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "2ed182cc-5e27-4b91-ae0d-af4b67cafed3",
+              "name": "modeloIAopen",
+              "value": "google/gemini-3.1-flash-lite",
+              "type": "string"
+            },
+            {
+              "id": "5a2befd9-070b-449c-a4ec-b29340b958c4",
+              "name": "openRouterToken",
+              "value": "sk-or-v1-***REDACTED***",
+              "type": "string"
+            },
+            {
+              "id": "e1663b79-8207-4069-ad38-877354f499aa",
+              "name": "modeloIAgemini",
+              "value": "gemini-flash-lite-latest",
+              "type": "string"
+            },
+            {
+              "id": "e836cfd1-9485-498c-8969-d9b5b853a2b7",
+              "name": "geminiToken",
+              "value": "***REDACTED***",
+              "type": "string"
+            },
+            {
+              "id": "4538ea64-5f01-4a04-8fdb-2bfab909849a",
+              "name": "prompt1",
+              "value": "=Você é um sistema especialista em leitura de comprovantes financeiros brasileiros.\n\nAnalise a imagem/documento fornecido e identifique se é:\n1. Comprovante de pagamento por CARTÃO (crédito/débito/à vista)\n2. Comprovante de transferência PIX\n3. Outro tipo → retorne apenas a palavra: null\n\nREGRAS IMPORTANTES:\n- Se for CARTÃO mas a bandeira NÃO estiver visível ou legível na imagem, retorne null.\n- Bandeira é OBRIGATÓRIA para cartão. Bandeiras aceitas: Visa, Master, Mastercard, Elo, Amex, American Express, Hipercard, Cabal, Banescard, Sorocred.\n- Se houver qualquer dúvida sobre ser cartão ou PIX, retorne null.\n- Responda APENAS com o JSON pedido ou a palavra null. Sem markdown, sem explicações.\n\nSe for CARTÃO (com bandeira identificada), extraia EXATAMENTE este JSON:\n{\n  \"tipo\": \"CARTAO\",\n  \"bandeira\": \"nome exato da bandeira ex: Visa, Master, Elo, Amex, Hipercard, Cabal\",\n  \"valor\": \"valor numérico com centavos ex: 150.00\",\n  \"banco\": \"nome do banco/adquirente ex: PagBank, Stone, Cielo, Getnet\",\n  \"empresaMaquininha\": \"nome da empresa no CNPJ do comprovante\",\n  \"parcelas\": \"A vista, Débito, 1, 2, 3 ... conforme constar no comprovante\",\n  \"autenticacao\": \"NSU ou código de autorização\",\n  \"data\": \"DD/MM/AAAA\",\n  \"hora\": \"HH:MM\"\n}\n\nSe for PIX, extraia EXATAMENTE este JSON:\n{\n  \"tipo\": \"PIX\",\n  \"valor\": \"valor numérico com centavos ex: 150.00\",\n  \"bancoOrigem\": \"banco de quem enviou\",\n  \"nomePagador\": \"nome do pagador\",\n  \"bancoDestino\": \"banco de quem recebeu\",\n  \"nomeRecebedor\": \"nome do recebedor\",\n  \"codigoIdentificacao\": \"ID/E2E da transação\",\n  \"data\": \"DD/MM/AAAA\",\n  \"hora\": \"HH:MM\",\n  \"codigoAutenticacao\": \"código de autenticação\"\n}\n\nTexto adicional da mensagem: ${caption}\nResponda APENAS com o JSON ou null.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -5088,
+        5376
+      ],
+      "id": "25ecb708-cb33-4ecd-bf14-b869b03fe0af",
+      "name": "Dados da IA"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "bdd18d27-5e07-4dce-b65b-df7d55927f8a",
+              "leftValue": "={{ $json.isCommand }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -5680,
+        5360
+      ],
+      "id": "9e7da13e-41ea-455e-a199-be140a4cab57",
+      "name": "É comando?"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "cond_skip",
+              "leftValue": "={{ $json.skip }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a4f9e01a-912f-4d9b-a48f-5bc1b0ead03e",
+      "name": "É imagem de grupo ou comando?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -5856,
+        5536
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const json = $input.item.json;\n\n// 1. Pegar as variáveis que já vieram mastigadas do nó de Filtro!\nconst texto = json.captionText || '';\nconst remetenteId = json.remetenteId || '';\n// Às vezes o participant oficial vem no participantAlt\nconst altRemetenteId = json.rawFullData?.key?.participantAlt || '';\n\nconst grupoId = json.grupoId || '';\nconst grupoNome = json.grupoNome || '';\n\n// 2. Verificar se é um comando\nif (!texto.startsWith('/')) {\n  return []; // Se não for comando, ignora este caminho\n}\n\n// 3. WHITELIST - Coloque os números dos Administradores autorizados aqui!\n// Formato: 55DDDNUMERO@s.whatsapp.net\nconst admins = [\n  \"5511999999999@s.whatsapp.net\", \n  \"553391357195@s.whatsapp.net\"\n];\n\nif (!admins.includes(remetenteId) && !admins.includes(altRemetenteId)) {\n  return []; // Se não for admin, morre aqui silenciosamente (não retorna erro)\n}\n\n// 4. Quebrar o comando (Ex: /cancelar X7K2A Valor errado)\nconst partes = texto.trim().split(' ');\nconst comando = partes[0].substring(1).toLowerCase(); // tirar a barra\n\nlet payload = {\n  action: \"comando_admin\",\n  comando: comando,\n  remetenteId: remetenteId,\n  grupoId: grupoId,\n  grupoNome: grupoNome,\n  idAlvo: \"\",\n  valor: 0,\n  motivo: \"\"\n};\n\nif (comando === \"cancelar\") {\n  payload.idAlvo = partes[1] || \"\";\n  payload.motivo = partes.slice(2).join(' ');\n} else if (comando === \"entrada\" || comando === \"retirada\") {\n  payload.valor = partes[1] || \"0\";\n  payload.motivo = partes.slice(2).join(' ');\n} else {\n  return [{ json: { erro: \"Comando inválido. Use /cancelar, /entrada ou /retirada.\", grupoId, remetenteId } }];\n}\n\nreturn [{ json: payload }];"
+      },
+      "id": "733f585e-3d14-4c05-8664-fbb3d6312a07",
+      "name": "Parse Comandos Admin1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -5456,
+        5072
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.erro }}",
+              "operation": "isEmpty"
+            }
+          ]
+        }
+      },
+      "id": "e7a96f52-c20d-4fef-8588-bcccea12e12c",
+      "name": "Tem Erro de Comando?1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -5264,
+        5072
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://script.google.com/macros/s/AKfycbxfF24HFoi3L4RNFb8sA6L6aJbuFG12Er5wdZBf01pTYww0_dy5kz5xr9wj8n7CXSaNkA/exec",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "redirect": {
+            "redirect": {
+              "maxRedirects": 5
+            }
+          }
+        }
+      },
+      "id": "2a095279-5d82-427d-9447-3285316500b3",
+      "name": "Apps Script Admin1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -5056,
+        4960
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://principal-evolution-api.9h4afz.easypanel.host/message/sendText/roboControle",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "F82872785DC8-4DB3-88C2-FB01EDBEDB88"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"number\": \"{{ $json.grupoId }}\",\n  \"text\": \"{{ $json.erro }}\"\n}",
+        "options": {}
+      },
+      "id": "277f7f5a-8f94-4cd8-bdf8-70a71280184c",
+      "name": "Enviar Erro Wpp1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -5056,
+        5168
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://principal-evolution-api.9h4afz.easypanel.host/message/sendText/roboControle",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "F82872785DC8-4DB3-88C2-FB01EDBEDB88"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"number\": \"{{ $('Parse Comandos Admin1').item.json.grupoId }}\",\n  \"text\": \"{{ $json.erro ? $json.erro : ($json.dados?.msg + '\\n\\n💰 Valor da Operação: R$ ' + Number($json.dados?.valorOperacao || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '\\n\\n📊 Saldo atual Cartão: R$ ' + Number($json.dados?.saldoCartao || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '\\n📊 Saldo atual Pix: R$ ' + Number($json.dados?.saldoPix || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '\\n\\n💱 Saldo anterior total: R$ ' + Number($json.dados?.saldoAnterior || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '\\n💵 Saldo atual total: R$ ' + Number($json.dados?.saldoTotal || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })) }}\"\n}",
+        "options": {}
+      },
+      "id": "7c5782c9-3f54-4920-b3d6-977d1c700ea6",
+      "name": "Enviar Sucesso Wpp1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -4864,
+        4960
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 23 * * *"
+            }
+          ]
+        }
+      },
+      "id": "df279a68-0751-49c0-988c-998ea328feeb",
+      "name": "Gatilho Diário (23h)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -6192,
+        6064
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://script.google.com/macros/s/AKfycbxfF24HFoi3L4RNFb8sA6L6aJbuFG12Er5wdZBf01pTYww0_dy5kz5xr9wj8n7CXSaNkA/exec",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"action\": \"fechamento\"}",
+        "options": {}
+      },
+      "id": "ccc5208b-4e38-4c7f-978e-d4a19d46c3f1",
+      "name": "Pedir Totais",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -5984,
+        6064
+      ]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "dados.relatorios",
+        "options": {}
+      },
+      "id": "59ee35cc-dd92-4c8e-bce3-91a84863e33e",
+      "name": "Separar por Grupo",
+      "type": "n8n-nodes-base.itemLists",
+      "typeVersion": 3,
+      "position": [
+        -5792,
+        6064
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const relatorio = $('Separar por Grupo').item.json;\n\nconst fmt = (v) => 'R$ ' + parseFloat(v).toFixed(2).replace('.',',').replace(/\\B(?=(\\d{3})+(?!\\d))/g, '.');\n\nconst msg = `*Fechamento do dia ${relatorio.hoje}*\\n\\nRecebido: ${fmt(relatorio.recebido)}\\nPago: ${fmt(relatorio.pago)}\\nTaxas: ${fmt(relatorio.taxas)}\\nTransações: ${relatorio.transacoes}\\n\\n*Saldo final: ${fmt(relatorio.saldoFinal)}*\\n\\nValidar!`;\n\nreturn [{ json: {\n  grupoId: relatorio.grupoId,\n  mensagem: msg\n}}];"
+      },
+      "id": "1296010e-6f84-426e-9fa7-34662e7da1a1",
+      "name": "Montar Mensagem",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -5584,
+        6064
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://principal-evolution-api.9h4afz.easypanel.host/message/sendText/roboControle",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "F82872785DC8-4DB3-88C2-FB01EDBEDB88"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"number\": {{ JSON.stringify($json.grupoId) }},\n  \"text\": {{ JSON.stringify($json.mensagem) }}\n}",
+        "options": {}
+      },
+      "id": "da113f62-0120-4361-9d4c-2858030190d3",
+      "name": "Enviar WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -5392,
+        6064
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook Evolution": {
+      "main": [
+        [
+          {
+            "node": "Filtrar Grupos + Imagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtrar Grupos + Imagem": {
+      "main": [
+        [
+          {
+            "node": "É imagem de grupo ou comando?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Baixar Mídia (Base64)": {
+      "main": [
+        [
+          {
+            "node": "Dados da IA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Prompt IA": {
+      "main": [
+        [
+          {
+            "node": "Google Gemini (IA)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini (IA)": {
+      "main": [
+        [
+          {
+            "node": "Parsear Resposta IA",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "OpenRouter (Backup)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parsear Resposta IA": {
+      "main": [
+        [
+          {
+            "node": "Comprovante Identificado?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Comprovante Identificado?": {
+      "main": [
+        [
+          {
+            "node": "Gravar Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Não Identificado → WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gravar Google Sheets": {
+      "main": [
+        [
+          {
+            "node": "Montar Resposta Sucesso",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar Resposta Sucesso": {
+      "main": [
+        [
+          {
+            "node": "Gravação OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gravação OK?": {
+      "main": [
+        [
+          {
+            "node": "Enviar Sucesso WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Erro Gravação → WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar Sucesso WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Responder Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Erro Gravação → WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Responder Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Não Identificado → WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Responder Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tratar Erro Geral": {
+      "main": [
+        [
+          {
+            "node": "Enviar Erro Geral → WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar Erro Geral → WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Responder Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter (Backup)": {
+      "main": [
+        [
+          {
+            "node": "Parsear Resposta IA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dados da IA": {
+      "main": [
+        [
+          {
+            "node": "Preparar Prompt IA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "É comando?": {
+      "main": [
+        [
+          {
+            "node": "Parse Comandos Admin1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Baixar Mídia (Base64)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "É imagem de grupo ou comando?": {
+      "main": [
+        [
+          {
+            "node": "É comando?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Responder Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Comandos Admin1": {
+      "main": [
+        [
+          {
+            "node": "Tem Erro de Comando?1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tem Erro de Comando?1": {
+      "main": [
+        [
+          {
+            "node": "Apps Script Admin1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Enviar Erro Wpp1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apps Script Admin1": {
+      "main": [
+        [
+          {
+            "node": "Enviar Sucesso Wpp1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gatilho Diário (23h)": {
+      "main": [
+        [
+          {
+            "node": "Pedir Totais",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pedir Totais": {
+      "main": [
+        [
+          {
+            "node": "Separar por Grupo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Separar por Grupo": {
+      "main": [
+        [
+          {
+            "node": "Montar Mensagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar Mensagem": {
+      "main": [
+        [
+          {
+            "node": "Enviar WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "instanceId": "879b6043979e6dffcd83e6acc7f47322040722b7051bb2e32fda73ee2d6acb01"
+  }
+}
