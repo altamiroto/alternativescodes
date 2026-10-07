@@ -10,6 +10,7 @@ const estado = {
 const telas = ['cadastro', 'envio', 'sucesso'];
 function mostrar(tela) {
   for (const t of telas) $(`#tela-${t}`).classList.toggle('oculto', t !== tela);
+  $('#abas-app').hidden = tela === 'cadastro'; // abas só depois do cadastro
   window.scrollTo(0, 0);
 }
 
@@ -267,11 +268,6 @@ function mostrarSucesso(r) {
   $('#ok-anteriores').innerHTML = r.registros_anteriores?.length
     ? `<div class="aviso atencao">Essa nota já tinha sido registrada antes (${r.registros_anteriores.map(a => fmt.registro(a.id)).join(', ')}).</div>`
     : '';
-  $('#ok-qr').src = `/api/public/${r.slug}/qr.png`;
-  $('#ok-link').href = r.url;
-  $('#ok-link').textContent = r.url.replace(/^https?:\/\//, '');
-  $('#btn-abrir').href = `/n/${r.slug}`;
-  $('#btn-compartilhar').onclick = () => compartilharLink(r.url, `Nota ${fmt.registro(r.id)}`);
   mostrar('sucesso');
 }
 

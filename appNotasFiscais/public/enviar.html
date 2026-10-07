@@ -18,6 +18,10 @@
     <a class="marca" href="/"><img src="/icons/icon-192.png" alt="">Notas do Estoque</a>
     <div class="lado" id="quem"></div>
   </header>
+  <nav class="abas-app" id="abas-app" hidden>
+    <a href="/" class="ativa">📄 Registrar nota</a>
+    <a href="/imprimir">🖨️ Imprimir etiquetas</a>
+  </nav>
 
   <main class="conteudo">
 
@@ -96,14 +100,11 @@
         <p class="suave" style="margin-top:0">Registro <b id="ok-registro"></b></p>
         <p id="ok-resumo" style="font-weight:600"></p>
         <div id="ok-anteriores"></div>
-        <img id="ok-qr" class="qr" alt="QR Code do registro">
-        <p class="pequeno"><a id="ok-link" target="_blank" rel="noopener"></a></p>
-        <div class="grade-2">
-          <button class="btn discreto" type="button" id="btn-compartilhar">🔗 Compartilhar link</button>
-          <a class="btn discreto" id="btn-abrir" target="_blank" rel="noopener">👁️ Ver registro</a>
-        </div>
       </div>
-      <button class="btn primario grande" type="button" id="btn-outra">➕ Registrar outra nota</button>
+      <div class="pilha">
+        <button class="btn primario grande" type="button" id="btn-outra">➕ Registrar outra nota</button>
+        <a class="btn grande" href="/imprimir">🖨️ Imprimir etiquetas</a>
+      </div>
     </section>
 
     <p class="rodape-pagina"><a href="/instalar">📲 Instalar este app no celular</a></p>

@@ -64,6 +64,25 @@ function desenharBarras(doc, barras, x, y, larguraMax, altura, modulo = MODULO_B
 const tipoDoc = n => (n.modelo === '65' ? 'NFC-e' : n.chave ? 'NF-e' : 'NF');
 const numeroSerie = n => (n.numero ? `${tipoDoc(n)} Nº ${String(n.numero).padStart(9, '0').replace(/(\d{3})(?=\d)/g, '$1.')}` : 'Nota fiscal');
 const docPessoa = d => (d && d.length === 14 ? `CNPJ ${formatarCNPJ(d)}` : d && d.length === 11 ? `CPF ${d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}` : d || '');
+// "2 UN  PARAFUSADEIRA ELÉTRICA 12V" (sem valores, de propósito)
+const qtdBR = q => (q == null ? '' : Number(q).toLocaleString('pt-BR', { maximumFractionDigits: 3 }));
+const linhaItem = i => `${[qtdBR(i.quantidade), i.unidade].filter(Boolean).join(' ')}  ${i.descricao || ''}`.trim();
+const itensDe = n => (Array.isArray(n.itens) ? n.itens.filter(i => i && i.descricao) : []);
+
+// Lista de produtos em linhas, até caber; o que sobrar vira "+ N itens"
+function listaItens(doc, itens, x, y, largura, alturaMax, tamanho) {
+  const passo = tamanho * 0.42; // altura da linha em mm
+  const cabem = Math.max(1, Math.floor(alturaMax / passo));
+  const mostrar = itens.length > cabem ? itens.slice(0, cabem - 1) : itens;
+  mostrar.forEach((i, k) => texto(doc, linhaItem(i), x, y + k * passo, largura, { tamanho }));
+  if (mostrar.length < itens.length) {
+    texto(doc, `+ ${itens.length - mostrar.length} ${itens.length - mostrar.length > 1 ? 'itens' : 'item'} (ver nota completa pelo QR)`,
+      x, y + mostrar.length * passo, largura, { tamanho, fonte: 'Helvetica-Oblique' });
+    return (mostrar.length + 1) * passo;
+  }
+  return mostrar.length * passo;
+}
+
 const CONSULTA = 'Consulte a autenticidade em www.nfe.fazenda.gov.br/portal com a chave de acesso.';
 
 // Rodapé discreto do sistema: QR pequeno + nº do registro + link em letra miúda
@@ -97,10 +116,12 @@ function etiqueta4(doc, n, img, x, y, w, h) {
     Y += 4.3; linhaH(doc, X, Y, L); Y += 1.8;
   }
 
+  const itens = itensDe(n);
   rotulo(doc, 'Chave de acesso', I, Y, IL); Y += 3;
   if (n.chave) {
-    desenharBarras(doc, img.barras, I, Y, IL, 20);
-    Y += 21.5;
+    const alturaBarras = itens.length ? 13 : 20; // com produtos, cede espaço para a lista
+    desenharBarras(doc, img.barras, I, Y, IL, alturaBarras);
+    Y += alturaBarras + 1.5;
     texto(doc, formatarChave(n.chave), I, Y, IL, { tamanho: 9, fonte: 'Helvetica-Bold', alinhar: 'center' });
     Y += 4.5;
   } else {
@@ -115,6 +136,12 @@ function etiqueta4(doc, n, img, x, y, w, h) {
 
   const qr = 24; // médio: legível numa foto, sem dominar a etiqueta
   const fimConteudo = y + h - m - p - qr - 1;
+  if (itens.length && Y < fimConteudo - 6) {
+    const reservaObs = n.comentario ? 9 : 0;
+    rotulo(doc, `Produtos (${itens.length})`, I, Y, IL); Y += 2.8;
+    Y += listaItens(doc, itens, I, Y, IL, fimConteudo - Y - reservaObs, 7.5) + 1;
+    linhaH(doc, X, Y, L); Y += 1.8;
+  }
   if (n.comentario && Y < fimConteudo - 4) {
     rotulo(doc, 'Observação', I, Y, IL); Y += 2.6;
     paragrafo(doc, n.comentario, I, Y, IL, fimConteudo - Y, 8);
@@ -161,6 +188,13 @@ function etiqueta8(doc, n, img, x, y, w, h) {
 
   const base = y + h - m - p;
   const qr = 18;
+  const itens = itensDe(n);
+  if (itens.length && base - 8 - Y > 3) {
+    const resumo = `Produtos: ${itens.map(linhaItem).join(' · ')}`;
+    const altura = Math.min(n.comentario ? 5.6 : 8.4, base - 8 - Y);
+    paragrafo(doc, resumo, I, Y + 0.5, IL - qr - 3, altura, 6.5);
+    Y += Math.min(altura, doc.heightOfString(resumo, { width: IL - qr - 3 })) + 0.8;
+  }
   if (n.comentario && base - 8 - Y > 3) paragrafo(doc, `Obs.: ${n.comentario}`, I, Y + 0.5, IL - qr - 3, base - 8 - Y, 6.5);
   if (n.chave) paragrafo(doc, CONSULTA, I, base - 7, IL - qr - 3, 4, 5.5);
   marcaSistema(doc, n, img, I, base - qr, IL, qr, qr);

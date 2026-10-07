@@ -92,9 +92,30 @@ function dataBR(txt) {
   return m ? `${m[3]}-${m[2]}-${m[1]}` : null;
 }
 
+// Linha da tabela "DADOS DOS PRODUTOS" do DANFE (ordem padrão das colunas):
+//   CÓDIGO  DESCRIÇÃO  NCM  CST/CSOSN  CFOP  UN  QTD  V.UNIT ...
+const LINHA_ITEM = /^\s*(\S{1,30})\s+(.{2,160}?)\s+(\d{8}|\d{4}\.\d{2}\.\d{2})\s+(\d{3,4})\s+([1-7]\d{3})\s+([A-Za-zÀ-ú]{1,6}\d{0,2})\s+(\d{1,3}(?:\.\d{3})*(?:,\d{1,4})?)(?=\s|$)/;
+
+// Melhor esforço: cada emissor monta o PDF de um jeito; se não reconhecer, devolve null
+function lerItensDANFE(texto) {
+  const itens = [];
+  for (const linha of texto.split('\n')) {
+    const m = LINHA_ITEM.exec(linha);
+    if (!m) continue;
+    itens.push({
+      codigo: m[1],
+      descricao: m[2].trim(),
+      ncm: m[3].replace(/\./g, ''),
+      unidade: m[6],
+      quantidade: numeroBR(m[7]),
+    });
+  }
+  return itens.length ? itens : null;
+}
+
 function lerTextoDANFE(texto) {
   const t = texto.replace(/[ \t ]+/g, ' ');
-  const dados = { chave: chave.encontrarNoTexto(t) };
+  const dados = { chave: chave.encontrarNoTexto(t), itens: lerItensDANFE(t) };
 
   const emitente = /RECEBEMOS DE\s+(.{3,120}?)\s+OS PRODUTOS/i.exec(t);
   if (emitente) dados.emitente_nome = emitente[1].trim();
@@ -150,4 +171,4 @@ async function analisar({ xmlBuffer, pdfBuffer, chaveDigitada }) {
   return dados;
 }
 
-module.exports = { analisar, lerXML, lerPDF, lerTextoDANFE, textoBusca };
+module.exports = { analisar, lerXML, lerPDF, lerTextoDANFE, lerItensDANFE, textoBusca };
