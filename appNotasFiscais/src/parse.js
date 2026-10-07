@@ -145,7 +145,7 @@ async function lerPDF(buffer) {
 
 // ─── Junta tudo ──────────────────────────────────────
 // Recebe o que o usuário mandou e devolve os campos da nota + status da leitura
-async function analisar({ xmlBuffer, pdfBuffer, chaveDigitada }) {
+async function analisar({ xmlBuffer, pdfBuffer, chaveDigitada, nomesArquivos = [] }) {
   let dados = {};
   if (xmlBuffer) dados = lerXML(xmlBuffer) || {};
   if (!dados.chave && pdfBuffer) {
@@ -155,6 +155,8 @@ async function analisar({ xmlBuffer, pdfBuffer, chaveDigitada }) {
 
   const digitada = chave.validar(chaveDigitada) ? chave.normalizar(chaveDigitada) : null;
   if (!dados.chave && digitada) dados.chave = digitada;
+  // Muitos sistemas salvam o arquivo com a chave no nome (ex.: NFE-3126...1678.pdf)
+  if (!dados.chave && nomesArquivos.length) dados.chave = chave.encontrarNoTexto(nomesArquivos.join(' ')) || null;
   if (!dados.origem_dados) dados.origem_dados = digitada ? 'chave' : 'manual';
 
   // Completa com o que a chave informa (sem sobrescrever o que veio do XML/PDF)

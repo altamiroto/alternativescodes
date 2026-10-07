@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="robots" content="noindex, nofollow">
   <meta name="theme-color" content="#1f5fbf">
-  <title>Imprimir etiquetas</title>
+  <title>Minhas notas</title>
   <link rel="manifest" href="/manifest.json">
   <link rel="icon" href="/icons/icon-192.png">
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
@@ -16,10 +16,6 @@
     <a class="marca" href="/"><img src="/icons/icon-192.png" alt="">Notas do Estoque</a>
     <div class="lado" id="quem"></div>
   </header>
-  <nav class="abas-app">
-    <a href="/">📄 Registrar nota</a>
-    <a href="/imprimir" class="ativa">🖨️ Imprimir etiquetas</a>
-  </nav>
 
   <main class="conteudo">
     <p id="carregando" class="suave centro" style="margin-top:40px">Carregando…</p>
@@ -35,40 +31,24 @@
     </section>
 
     <section id="impressao" class="oculto">
-      <h1>Imprimir etiquetas</h1>
+      <a class="btn primario grande" href="/nova" style="margin-top:8px">➕ Adicionar nota fiscal</a>
+      <div id="adicionada" class="oculto"></div>
 
       <!-- Resultado da última impressão -->
-      <div id="pronto" class="card oculto">
-        <div class="aviso ok" style="margin:0">
+      <div id="pronto" class="oculto">
+        <div class="aviso ok">
           <b>✅ PDF gerado!</b> Ele abriu em outra aba: é só mandar <b>Imprimir</b>
           (no celular, pelo menu do navegador ou do leitor de PDF).<br>
           <span class="pequeno">As notas foram marcadas como impressas.</span>
         </div>
       </div>
 
-      <div class="card">
-        <div class="passo"><span class="num">1</span><h2>Tamanho da etiqueta</h2></div>
-        <div class="tamanhos">
-          <button type="button" class="tamanho ativo" data-layout="4">
-            <span class="folha g4"><i></i><i></i><i></i><i></i></span>
-            <b>4 por folha</b><small>Grande</small>
-          </button>
-          <button type="button" class="tamanho" data-layout="8">
-            <span class="folha g8"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
-            <b>8 por folha</b><small>Média</small>
-          </button>
-          <button type="button" class="tamanho" data-layout="16">
-            <span class="folha g16"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
-            <b>16 por folha</b><small>Pequena</small>
-          </button>
-        </div>
-        <p class="suave pequeno" style="margin-bottom:0">Papel A4 comum. Depois é só recortar nas linhas tracejadas.</p>
-      </div>
+      <h1 style="margin:20px 0 4px" id="titulo-lista">Minhas notas</h1>
+      <p class="suave pequeno" style="margin:0 0 12px">Marque as que vai imprimir e toque em <b>Gerar PDF</b> lá embaixo.</p>
 
       <div class="card">
-        <div class="passo"><span class="num">2</span><h2>Quais notas?</h2></div>
         <div class="segmentos" role="tablist">
-          <button type="button" class="ativo" data-filtro="pendentes">Ainda não impressas <span id="qtd-pendentes"></span></button>
+          <button type="button" class="ativo" data-filtro="pendentes">Para imprimir <span id="qtd-pendentes"></span></button>
           <button type="button" data-filtro="todas">Todas</button>
         </div>
         <input type="search" id="busca" placeholder="🔎 Buscar fornecedor, número ou produto" style="margin-top:10px">
@@ -78,9 +58,17 @@
         <div id="lista"></div>
       </div>
 
+      <p class="rodape-pagina"><a href="/instalar">📲 Instalar este app no celular</a></p>
+
       <div class="barra-imprimir">
-        <div id="resumo-selecao" class="suave pequeno centro">Nenhuma nota selecionada</div>
-        <button class="btn primario grande" type="button" id="btn-gerar" disabled>🖨️ Gerar PDF para imprimir</button>
+        <div class="tamanhos-compacto" role="radiogroup" aria-label="Etiquetas por folha">
+          <span class="suave pequeno">Por folha A4:</span>
+          <button type="button" class="tamanho ativo" data-layout="4"><span class="folha g4"><i></i><i></i><i></i><i></i></span>4 <small>grandes</small></button>
+          <button type="button" class="tamanho" data-layout="8"><span class="folha g8"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>8 <small>médias</small></button>
+          <button type="button" class="tamanho" data-layout="16"><span class="folha g16"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>16 <small>pequenas</small></button>
+        </div>
+        <button class="btn primario grande" type="button" id="btn-gerar" disabled>🖨️ Gerar PDF</button>
+        <div id="resumo-selecao" class="suave pequeno centro">Nenhuma nota marcada</div>
       </div>
     </section>
   </main>

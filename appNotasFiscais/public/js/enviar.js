@@ -7,10 +7,12 @@ const estado = {
   enviando: false,
 };
 
-const telas = ['cadastro', 'envio', 'sucesso'];
+const telas = ['cadastro', 'envio'];
 function mostrar(tela) {
   for (const t of telas) $(`#tela-${t}`).classList.toggle('oculto', t !== tela);
-  $('#abas-app').hidden = tela === 'cadastro'; // abas só depois do cadastro
+  // No formulário, o topo mostra "← Minhas notas" no lugar da marca
+  $('#voltar-topo').classList.toggle('oculto', tela !== 'envio');
+  $('#marca').classList.toggle('oculto', tela === 'envio');
   window.scrollTo(0, 0);
 }
 
@@ -232,7 +234,7 @@ $('#btn-enviar').addEventListener('click', async () => {
   erro.classList.add('oculto');
   estado.enviando = true;
   const botao = $('#btn-enviar');
-  botao.textContent = 'Enviando…';
+  botao.textContent = 'Adicionando…';
   atualizarBotaoEnviar();
   $('#progresso').classList.remove('oculto');
 
@@ -241,57 +243,36 @@ $('#btn-enviar').addEventListener('click', async () => {
   if (estado.chave) form.append('chave', estado.chave);
   for (const { file } of estado.anexos) form.append('anexos', file, file.name);
   form.append('comentario', $('#comentario').value);
+  form.append('uma_nota', '1'); // PDF + XML + chave desta tela são a mesma nota
 
   try {
     const r = await enviarComProgresso(form);
-    mostrarSucesso(r);
+    irParaImpressao(r);
   } catch (err) {
     if (err.status === 401) { mostrar('cadastro'); return; }
     erro.textContent = err.message;
     erro.classList.remove('oculto');
   } finally {
     estado.enviando = false;
-    botao.textContent = '✔ Enviar';
+    botao.textContent = '✔ Adicionar nota';
     $('#progresso').classList.add('oculto');
     $('#progresso > div').style.width = '0';
     atualizarBotaoEnviar();
   }
 });
 
-function mostrarSucesso(r) {
-  const n = r.nota;
-  $('#ok-registro').textContent = fmt.registro(r.id);
-  const partes = [];
-  if (n.numero) partes.push(fmt.tituloNota(n));
-  if (n.emitente_nome) partes.push(n.emitente_nome);
-  $('#ok-resumo').textContent = partes.join(' · ') || (n.chave ? '' : 'Não foi possível ler a chave do PDF, mas o arquivo foi guardado.');
-  $('#ok-anteriores').innerHTML = r.registros_anteriores?.length
-    ? `<div class="aviso atencao">Essa nota já tinha sido registrada antes (${r.registros_anteriores.map(a => fmt.registro(a.id)).join(', ')}).</div>`
-    : '';
-  mostrar('sucesso');
+// Nota salva: volta para "Minhas notas", já com ela marcada para imprimir
+function irParaImpressao(r) {
+  const nota = r.notas[0];
+  const params = new URLSearchParams({ nova: nota.id });
+  if (nota.registros_anteriores?.length) params.set('repetida', nota.id);
+  location.href = `/?${params}`;
 }
-
-$('#btn-outra').addEventListener('click', () => {
-  estado.notaArquivos = [];
-  estado.chave = null;
-  estado.anexos.forEach(a => URL.revokeObjectURL(a.url));
-  estado.anexos = [];
-  ultimaConsulta = '';
-  $('#campo-chave').value = '';
-  $('#chave-status').innerHTML = '';
-  $('#comentario').value = '';
-  $('#painel-chave').classList.add('oculto');
-  $('#btn-chave').classList.remove('ativo');
-  $('#envio-erro').classList.add('oculto');
-  desenharNota();
-  desenharAnexos();
-  mostrar('envio');
-});
 
 // ─── Arquivos vindos do "Compartilhar" do Android ────
 async function receberCompartilhados() {
   if (!new URLSearchParams(location.search).has('compartilhado') || !('caches' in window)) return;
-  history.replaceState(null, '', '/');
+  history.replaceState(null, '', '/nova');
   const cache = await caches.open('compartilhado');
   const chaves = await cache.keys();
   const arquivos = [];
@@ -326,7 +307,10 @@ async function receberCompartilhados() {
     } catch { /* segue para o cadastro */ }
   }
 
-  if (usuario) {
+  if (usuario && new URLSearchParams(location.search).has('trocar')) {
+    history.replaceState(null, '', '/nova');
+    mostrar('cadastro');
+  } else if (usuario) {
     mostrarUsuario(usuario);
     mostrar('envio');
   } else {

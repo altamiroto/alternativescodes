@@ -78,3 +78,9 @@ test('lê a tabela de produtos do DANFE (PDF)', () => {
   ]);
   assert.strictEqual(parse.lerItensDANFE('CNPJ 12.345.678/0001-90\nVALOR TOTAL 1.234,56'), null);
 });
+
+test('acha a chave no nome do arquivo quando o PDF não tem', async () => {
+  const d = await parse.analisar({ nomesArquivos: ['NFE-31260847960950091330550210003305041049371678.pdf'] });
+  assert.strictEqual(d.chave, '31260847960950091330550210003305041049371678');
+  assert.strictEqual(d.uf, 'MG');
+});

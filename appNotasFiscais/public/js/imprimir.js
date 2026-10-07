@@ -21,6 +21,7 @@ async function carregar() {
     return;
   }
   imp.notas = r.notas;
+  if (r.todas) $('#titulo-lista').textContent = 'Notas de todos (administrador)';
   $('#qtd-pendentes').textContent = `(${r.pendentes})`;
   // Ao abrir a tela, já deixa marcadas todas as que ainda não foram impressas
   if (imp.primeiraCarga) {
@@ -46,12 +47,14 @@ async function recadastrar() {
 }
 
 function semAcesso(err) {
+  // Ainda não se cadastrou: vai para o cadastro (fica na tela de adicionar nota)
+  if (err.status === 401) { location.replace('/nova'); return; }
   $('#carregando').classList.add('oculto');
   if (err.status === 403) {
-    $('#sem-acesso-titulo').textContent = 'Só o administrador imprime';
-    $('#sem-acesso-texto').textContent = err.message;
-    $('#sem-acesso-botao').textContent = 'Entrar como administrador';
-    $('#sem-acesso-botao').href = '/admin';
+    $('#sem-acesso-titulo').textContent = 'A impressão é feita pelo administrador';
+    $('#sem-acesso-texto').textContent = 'Você pode continuar adicionando as notas fiscais normalmente.';
+    $('#sem-acesso-botao').textContent = '➕ Adicionar nota fiscal';
+    $('#sem-acesso-botao').href = '/nova';
   }
   $('#sem-acesso').classList.remove('oculto');
 }
@@ -59,7 +62,7 @@ function semAcesso(err) {
 function desenhar() {
   if (!imp.notas.length) {
     $('#lista').innerHTML = imp.filtro === 'pendentes' && !$('#busca').value.trim()
-      ? '<div class="vazio-imp">🎉 Todas as notas já têm etiqueta impressa.<br><span class="pequeno">Para imprimir de novo, toque em <b>Todas</b>.</span></div>'
+      ? '<div class="vazio-imp">Nenhuma nota esperando impressão.<br><span class="pequeno">Toque em <b>➕ Adicionar nota fiscal</b>. Para reimprimir, toque em <b>Todas</b>.</span></div>'
       : '<div class="vazio-imp">Nenhuma nota encontrada.</div>';
   } else {
     $('#lista').innerHTML = imp.notas.map(n => `
@@ -88,8 +91,9 @@ function atualizarResumo() {
   const qtd = imp.selecionadas.size;
   const folhas = Math.ceil(qtd / imp.layout);
   $('#resumo-selecao').textContent = qtd
-    ? `${qtd} nota${qtd > 1 ? 's' : ''} selecionada${qtd > 1 ? 's' : ''} · ${folhas} folha${folhas > 1 ? 's' : ''} A4`
-    : 'Nenhuma nota selecionada';
+    ? `${qtd} nota${qtd > 1 ? 's' : ''} marcada${qtd > 1 ? 's' : ''} · ${folhas} folha${folhas > 1 ? 's' : ''} A4`
+    : 'Nenhuma nota marcada';
+  $('#btn-gerar').textContent = qtd ? `🖨️ Gerar PDF (${qtd})` : '🖨️ Gerar PDF';
   $('#btn-gerar').disabled = qtd === 0;
   const visiveis = imp.notas.map(n => n.id);
   const todas = visiveis.length > 0 && visiveis.every(id => imp.selecionadas.has(id));
@@ -147,7 +151,29 @@ $('#btn-gerar').addEventListener('click', () => {
   } catch { /* padrão: 4 */ }
   try {
     const { usuario } = await api('/api/eu');
-    if (usuario) $('#quem').innerHTML = `Olá, <b>${escapar(usuario.nome.split(' ')[0])}</b>`;
-  } catch { /* segue */ }
+    if (usuario) {
+      $('#quem').innerHTML = `Olá, <b>${escapar(usuario.nome.split(' ')[0])}</b><br><a href="/nova?trocar=1" class="pequeno">não é você?</a>`;
+    } else if (!(await api('/api/admin/eu')).admin && !(await recadastrar())) {
+      location.replace('/nova'); // primeira vez neste aparelho: cadastro
+      return;
+    }
+  } catch { /* sem internet: tenta carregar mesmo assim */ }
+  mostrarAdicionada();
   carregar();
 })();
+
+// Veio do formulário: confirma a nota que acabou de entrar na fila
+function mostrarAdicionada() {
+  const q = new URLSearchParams(location.search);
+  if (!q.has('nova')) return;
+  history.replaceState(null, '', '/');
+  const ids = q.get('nova').split(',').map(Number).filter(Boolean);
+  ids.forEach(id => imp.selecionadas.add(id));
+  const repetidas = (q.get('repetida') || '').split(',').map(Number).filter(Boolean);
+  const texto = ids.length > 1
+    ? `✅ ${ids.length} notas adicionadas (${ids.map(fmt.registro).join(', ')}).`
+    : `✅ Nota ${fmt.registro(ids[0])} adicionada. Adicione outra ou gere o PDF.`;
+  $('#adicionada').innerHTML = `<div class="aviso ok" style="margin-top:12px">${texto}</div>`
+    + (repetidas.length ? `<div class="aviso atencao">Atenção: ${repetidas.length > 1 ? 'as notas' : 'a nota'} ${repetidas.map(fmt.registro).join(', ')} já tinha${repetidas.length > 1 ? 'm' : ''} sido registrada${repetidas.length > 1 ? 's' : ''} antes.</div>` : '');
+  $('#adicionada').classList.remove('oculto');
+}
