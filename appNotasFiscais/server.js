@@ -129,7 +129,25 @@ const valorBanco = (campo, v) => (campo === 'itens' && v != null ? JSON.stringif
 // =====================================================
 // PÁGINAS
 // =====================================================
-const pagina = arquivo => (req, res) => res.sendFile(path.join(PUBLIC_DIR, arquivo));
+// Versão dos arquivos do app (muda a cada deploy que altere JS/CSS). Vai como ?v= nos
+// <script>/<link> das páginas, para o navegador nunca misturar tela nova com código antigo.
+const VERSAO_ARQUIVOS = (() => {
+  const hash = crypto.createHash('sha1');
+  for (const pasta of ['js', 'css', 'vendor']) {
+    const dir = path.join(PUBLIC_DIR, pasta);
+    for (const f of fs.readdirSync(dir).sort()) hash.update(f).update(fs.readFileSync(path.join(dir, f)));
+  }
+  return hash.digest('hex').slice(0, 10);
+})();
+
+const paginasProntas = {};
+const pagina = arquivo => (req, res) => {
+  if (!paginasProntas[arquivo]) {
+    paginasProntas[arquivo] = fs.readFileSync(path.join(PUBLIC_DIR, arquivo), 'utf8')
+      .replace(/((?:src|href)="\/(?:js|css)\/[\w.-]+\.(?:js|css))"/g, `$1?v=${VERSAO_ARQUIVOS}"`);
+  }
+  res.set('Cache-Control', 'no-cache').type('html').send(paginasProntas[arquivo]);
+};
 app.get('/', pagina('enviar.html'));
 app.get('/n/:slug', pagina('nota.html'));
 app.get('/admin', pagina('admin.html'));
@@ -139,7 +157,14 @@ app.get('/imprimir', pagina('imprimir.html'));
 app.post('/compartilhar', (req, res) => res.redirect(303, '/'));
 app.get('/robots.txt', (req, res) => res.type('text/plain').send('User-agent: *\nDisallow: /\n'));
 app.get('/sw.js', (req, res) => res.set('Cache-Control', 'no-cache').sendFile(path.join(PUBLIC_DIR, 'sw.js')));
-app.use(express.static(PUBLIC_DIR, { index: false, maxAge: '1h' }));
+app.use(express.static(PUBLIC_DIR, {
+  index: false,
+  setHeaders: (res, arquivo) => {
+    // Código e páginas: sempre confere se há versão nova (resposta 304 rápida se não houver)
+    if (/\.(js|css|html|json)$/.test(arquivo)) res.set('Cache-Control', 'no-cache');
+    else res.set('Cache-Control', 'public, max-age=604800'); // ícones e leitor de código de barras
+  },
+}));
 
 // =====================================================
 // API — GERAL
@@ -222,6 +247,7 @@ app.post('/api/notas', limite(60), camposUpload, rota(async (req, res) => {
       xmlBuffer: xml ? fs.readFileSync(xml.arquivo.path) : null,
       pdfBuffer: pdf ? fs.readFileSync(pdf.arquivo.path) : null,
       chaveDigitada,
+      nomesArquivos: notaArquivos.map(n => Buffer.from(n.arquivo.originalname, 'latin1').toString('utf8')),
     });
 
     const cliente = await db.pool.connect();

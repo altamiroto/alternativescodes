@@ -1,6 +1,6 @@
 // Service worker: abre rápido (cache da "casca" do app) e recebe arquivos do "Compartilhar" do Android.
 // Dados das notas e a API sempre vêm da rede.
-const VERSAO = 'notas-v2';
+const VERSAO = 'notas-v3';
 const CASCA = [
   '/', '/imprimir', '/instalar', '/css/app.css', '/js/comum.js', '/js/enviar.js', '/js/imprimir.js', '/js/nota.js',
   '/nota.html', '/manifest.json', '/icons/icon-192.png',
@@ -44,8 +44,12 @@ self.addEventListener('fetch', e => {
   const alvo = url.pathname.startsWith('/n/') ? '/nota.html' : e.request;
 
   // Rede primeiro (pega atualizações), cache se estiver sem internet
+  // cache: 'no-cache' = sempre confere com o servidor (nunca usa cópia velha do navegador)
+  const rede = e.request.mode === 'navigate'
+    ? fetch(e.request)
+    : fetch(e.request.url, { cache: 'no-cache', credentials: 'same-origin' });
   e.respondWith(
-    fetch(e.request)
+    rede
       .then(resp => {
         if (resp.ok && CASCA.includes(url.pathname)) {
           const copia = resp.clone();
