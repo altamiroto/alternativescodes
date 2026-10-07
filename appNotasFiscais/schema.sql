@@ -73,3 +73,7 @@ ALTER TABLE notas ADD COLUMN IF NOT EXISTS protocolo TEXT;
 -- v1.2: busca por produtos (itens do XML + texto do PDF, sem acentos e em minúsculas)
 ALTER TABLE notas ADD COLUMN IF NOT EXISTS itens JSONB;
 ALTER TABLE notas ADD COLUMN IF NOT EXISTS texto_busca TEXT;
+
+-- v1.3: lista "Para imprimir agora" guardada na conta da pessoa (vale em qualquer aparelho)
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS lote_ids INT[] NOT NULL DEFAULT '{}';
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS lote_impresso BOOLEAN NOT NULL DEFAULT FALSE;

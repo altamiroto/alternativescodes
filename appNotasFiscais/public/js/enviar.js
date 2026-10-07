@@ -36,11 +36,14 @@ $('#form-cadastro').addEventListener('submit', async e => {
   try {
     const { usuario } = await api('/api/cadastro', { json: { nome: $('#cad-nome').value, email: $('#cad-email').value } });
     try { localStorage.setItem('nf_usuario', JSON.stringify(usuario)); } catch { /* sem armazenamento */ }
+    // Entrou: vai para "Minhas notas" (a menos que tenha chegado com arquivos do "Compartilhar")
+    if (!estado.notaArquivos.length) { location.href = '/'; return; }
     mostrarUsuario(usuario);
     mostrar('envio');
   } catch (err) {
     erro.textContent = err.message;
     erro.classList.remove('oculto');
+    if (/nome/.test(err.message)) $('#cad-nome').focus();
   }
 });
 
@@ -301,7 +304,7 @@ async function receberCompartilhados() {
   if (!usuario) {
     try {
       const salvo = JSON.parse(localStorage.getItem('nf_usuario') || 'null');
-      if (salvo?.nome && salvo?.email) {
+      if (salvo?.email) {
         usuario = (await api('/api/cadastro', { json: salvo })).usuario;
       }
     } catch { /* segue para o cadastro */ }

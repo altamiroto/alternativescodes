@@ -26,12 +26,12 @@
     <section id="tela-cadastro" class="oculto">
       <h1>Bem-vindo! 👋</h1>
       <div class="card">
-        <p style="margin-top:0">Antes de começar, diga quem é você. <span class="suave">É só uma vez: o aparelho vai lembrar.</span></p>
+        <p style="margin-top:0">Para começar, digite seu e-mail. <span class="suave">Use sempre o mesmo e-mail: assim suas notas aparecem em qualquer celular ou computador.</span></p>
         <form id="form-cadastro" novalidate>
-          <label for="cad-nome">Seu nome</label>
-          <input id="cad-nome" type="text" autocomplete="name" required maxlength="80">
           <label for="cad-email">Seu e-mail</label>
           <input id="cad-email" type="email" autocomplete="email" inputmode="email" required maxlength="120">
+          <label for="cad-nome">Seu nome <span class="suave pequeno" style="font-weight:400">(só na primeira vez)</span></label>
+          <input id="cad-nome" type="text" autocomplete="name" maxlength="80">
           <div id="cad-erro" class="aviso erro oculto"></div>
           <button class="btn primario grande" type="submit" style="margin-top:16px">Continuar</button>
         </form>

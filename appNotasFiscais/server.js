@@ -207,22 +207,25 @@ app.get('/api/eu', rota(async (req, res) => {
   res.json({ usuario: u && !u.bloqueado ? { nome: u.nome, email: u.email } : null });
 }));
 
+// Identificação só pelo e-mail: e-mail já conhecido entra direto (qualquer aparelho);
+// o nome só é pedido na primeira vez.
 app.post('/api/cadastro', limite(30), rota(async (req, res) => {
   const nome = String(req.body?.nome || '').trim().replace(/\s+/g, ' ').slice(0, 80);
   const email = String(req.body?.email || '').trim().toLowerCase().slice(0, 120);
-  if (nome.length < 2) return erro(res, 400, 'Digite seu nome.');
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return erro(res, 400, 'Digite um e-mail válido.');
 
-  const { rows } = await db.query(
-    `INSERT INTO usuarios (nome, email) VALUES ($1, $2)
-     ON CONFLICT (email) DO UPDATE SET nome = EXCLUDED.nome
-     RETURNING id, nome, email, bloqueado`,
-    [nome, email]
-  );
-  const u = rows[0];
+  let { rows: [u] } = await db.query('SELECT id, nome, email, bloqueado FROM usuarios WHERE email = $1', [email]);
+  const existente = !!u;
+  if (!u) {
+    if (nome.length < 2) return erro(res, 400, 'Primeira vez por aqui? Digite também o seu nome.');
+    ({ rows: [u] } = await db.query(
+      `INSERT INTO usuarios (nome, email) VALUES ($1, $2)
+       ON CONFLICT (email) DO UPDATE SET email = EXCLUDED.email
+       RETURNING id, nome, email, bloqueado`, [nome, email]));
+  }
   if (u.bloqueado) return erro(res, 403, 'Seu acesso foi bloqueado. Fale com o administrador.');
   auth.entrarUsuario(req, res, u.id);
-  res.json({ usuario: { nome: u.nome, email: u.email } });
+  res.json({ usuario: { nome: u.nome, email: u.email }, existente });
 }));
 
 // Avisa se a chave já foi registrada antes (não impede: pode ser um novo envio corrigido)
@@ -360,6 +363,12 @@ app.post('/api/notas', limite(60), camposUpload, rota(async (req, res) => {
       await db.auditar(usuario.nome, 'criou', nota.id, { origem: nota.origem_dados, lote: criadas.length });
       resposta.push({ id: nota.id, slug: nota.slug, url: linkNota(req, nota.slug), nota: resumoPublico(nota), registros_anteriores: anteriores });
     }
+    // Entram na lista "Para imprimir agora" da pessoa. Se a lista já foi impressa,
+    // a primeira nota nova começa uma lista nova.
+    await db.query(
+      `UPDATE usuarios SET lote_ids = CASE WHEN lote_impresso THEN $2::int[] ELSE lote_ids || $2::int[] END,
+              lote_impresso = FALSE
+       WHERE id = $1`, [usuario.id, criadas.map(n => n.id)]);
     res.status(201).json({ notas: resposta });
   } finally {
     storage.removerTmp(enviados); // o que não foi movido (erro) é apagado
@@ -481,6 +490,11 @@ async function responderEtiquetas(req, res, quem) {
   if (req.query.marcar !== '0') {
     await db.query('UPDATE notas SET etiqueta_impressa_em = NOW() WHERE id = ANY($1::int[])', [rows.map(n => n.id)]);
   }
+  if (quem.usuarioId) {
+    // A lista continua na tela (para reimprimir se precisar), só fica marcada como impressa
+    await db.query('UPDATE usuarios SET lote_impresso = TRUE WHERE id = $1 AND lote_ids && $2::int[]',
+      [quem.usuarioId, rows.map(n => n.id)]);
+  }
   await db.auditar(quem.nome, 'gerou etiquetas', null, { ids: rows.map(n => n.id), layout });
   res.type('application/pdf').set('Content-Disposition', `inline; filename="etiquetas-${layout}-por-folha.pdf"`).send(pdf);
 }
@@ -495,12 +509,19 @@ app.get('/api/impressao/notas', rota(async (req, res) => {
   if (!quem) return negarImpressao(res);
   const params = [quem.usuarioId];
   const where = ['n.deleted_at IS NULL', '($1::int IS NULL OR n.criado_por = $1)'];
-  if (req.query.ids !== undefined) {
-    // Notas do fluxo atual (o aparelho sabe quais a pessoa acabou de adicionar)
-    params.push(String(req.query.ids).split(',').map(Number).filter(Boolean).slice(0, 500));
+  // Lista "Para imprimir agora" da pessoa (guardada na conta, vale em qualquer aparelho)
+  const { rows: [conta] } = quem.usuarioId
+    ? await db.query('SELECT lote_ids, lote_impresso FROM usuarios WHERE id = $1', [quem.usuarioId])
+    : { rows: [{ lote_ids: [], lote_impresso: false }] };
+  if (req.query.lista === 'agora') {
+    params.push(conta.lote_ids);
     where.push(`n.id = ANY($${params.length}::int[])`);
-  } else if (req.query.filtro === 'pendentes') {
-    where.push('n.etiqueta_impressa_em IS NULL');
+  } else {
+    if (conta.lote_ids.length) { // "Notas antigas" não repete as da lista atual
+      params.push(conta.lote_ids);
+      where.push(`NOT (n.id = ANY($${params.length}::int[]))`);
+    }
+    if (req.query.filtro === 'pendentes') where.push('n.etiqueta_impressa_em IS NULL');
   }
   const q = String(req.query.q || '').trim();
   if (q) {
@@ -521,7 +542,18 @@ app.get('/api/impressao/notas', rota(async (req, res) => {
   const { rows: [cont] } = await db.query(
     `SELECT count(*)::int AS pendentes FROM notas
      WHERE deleted_at IS NULL AND etiqueta_impressa_em IS NULL AND ($1::int IS NULL OR criado_por = $1)`, [quem.usuarioId]);
-  res.json({ notas: rows, pendentes: cont.pendentes, todas: quem.usuarioId === null });
+  res.json({
+    notas: rows, pendentes: cont.pendentes, todas: quem.usuarioId === null,
+    lote: { quantidade: conta.lote_ids.length, impresso: conta.lote_impresso },
+  });
+}));
+
+// "Começar lista nova": esvazia o "Para imprimir agora" (as notas continuam em "Notas antigas")
+app.post('/api/impressao/lista-nova', rota(async (req, res) => {
+  const quem = await quemImprime(req);
+  if (!quem) return negarImpressao(res);
+  if (quem.usuarioId) await db.query("UPDATE usuarios SET lote_ids = '{}', lote_impresso = FALSE WHERE id = $1", [quem.usuarioId]);
+  res.json({ ok: true });
 }));
 
 app.get('/api/impressao/etiquetas.pdf', rota(async (req, res) => {

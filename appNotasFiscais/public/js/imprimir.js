@@ -1,67 +1,41 @@
 // Minhas notas: imprimir as notas adicionadas neste fluxo (e, se quiser, antigas)
 //
-// "Para imprimir agora" = só as notas que a pessoa adicionou desde a última impressão neste
-// aparelho (lista guardada no navegador). Nada antigo entra marcado sozinho.
-// "Notas antigas" = todas as notas dela, sem nada marcado: marca só o que quiser reimprimir.
-const CHAVE_LOTE = 'nf_lote';
+// "Para imprimir agora" = as notas que a pessoa adicionou desde a última lista. A lista fica
+// guardada na conta (vale em qualquer aparelho com o mesmo e-mail) e NÃO some ao imprimir:
+// só recomeça quando ela adiciona uma nota depois de imprimir ou toca em "Começar lista nova".
+// "Notas antigas" = todas as outras notas dela, sem nada marcado: marca só o que quiser.
 const imp = {
   filtro: 'lote',
   layout: 4,
-  lote: lerLote(),        // ids adicionados neste fluxo
+  lote: { quantidade: 0, impresso: false },
   notas: [],
   selecionadas: new Set(),
-  desmarcadas: new Set(), // notas do fluxo que a pessoa desmarcou de propósito
+  desmarcadas: new Set(), // notas da lista que a pessoa desmarcou de propósito
 };
 
-function lerLote() {
-  try {
-    const ids = JSON.parse(localStorage.getItem(CHAVE_LOTE) || '[]');
-    return Array.isArray(ids) ? ids.map(Number).filter(Boolean) : [];
-  } catch {
-    return [];
-  }
-}
-
-function salvarLote() {
-  try { localStorage.setItem(CHAVE_LOTE, JSON.stringify(imp.lote)); } catch { /* sem armazenamento */ }
-}
-
 async function carregar() {
-  let url;
+  const params = new URLSearchParams();
   if (imp.filtro === 'lote') {
-    if (!imp.lote.length) {
-      imp.notas = [];
-      return mostrarTela();
-    }
-    url = `/api/impressao/notas?ids=${imp.lote.join(',')}`;
+    params.set('lista', 'agora');
   } else {
-    const params = new URLSearchParams({ filtro: 'todas' });
+    params.set('filtro', 'todas');
     const q = $('#busca').value.trim();
     if (q) params.set('q', q);
-    url = `/api/impressao/notas?${params}`;
   }
   let r;
   try {
-    r = await api(url);
+    r = await api(`/api/impressao/notas?${params}`);
   } catch (err) {
     if (err.status === 401 && !imp.tentouRecadastro && await recadastrar()) return carregar();
     if (err.status === 401 || err.status === 403) return semAcesso(err);
     aviso(err.message, 5000);
     return;
   }
-  // "Notas antigas" não repete as do fluxo atual
-  imp.notas = imp.filtro === 'lote' ? r.notas : r.notas.filter(n => !imp.lote.includes(n.id));
+  imp.notas = r.notas;
+  imp.lote = r.lote;
   if (r.todas) $('#titulo-lista').textContent = 'Notas de todos (administrador)';
-  if (imp.filtro === 'lote') {
-    // tira do fluxo o que não existe mais (excluída pelo admin, por exemplo)
-    const existentes = new Set(r.notas.map(n => n.id));
-    if (imp.lote.some(id => !existentes.has(id))) {
-      imp.lote = imp.lote.filter(id => existentes.has(id));
-      salvarLote();
-    }
-    // notas do fluxo entram marcadas (menos as que a pessoa desmarcou)
-    imp.lote.forEach(id => { if (!imp.desmarcadas.has(id)) imp.selecionadas.add(id); });
-  }
+  // notas da lista entram marcadas (menos as que a pessoa desmarcou)
+  if (imp.filtro === 'lote') r.notas.forEach(n => { if (!imp.desmarcadas.has(n.id)) imp.selecionadas.add(n.id); });
   mostrarTela();
 }
 
@@ -99,11 +73,14 @@ function semAcesso(err) {
 
 function desenhar() {
   const lote = imp.filtro === 'lote';
-  $('#qtd-lote').textContent = imp.lote.length ? `(${imp.lote.length})` : '';
+  $('#qtd-lote').textContent = imp.lote.quantidade ? `(${imp.lote.quantidade})` : '';
   $('#busca').classList.toggle('oculto', lote);
   $('#explica-filtro').innerHTML = lote
-    ? 'As notas que você adicionou agora. Depois de gerar o PDF, esta lista fica vazia para a próxima vez.'
-    : 'Todas as suas notas anteriores. <b>Marque só as que quiser imprimir.</b>';
+    ? (imp.lote.impresso
+      ? '<span class="aviso ok" style="display:block;margin:0">✅ <b>Esta lista já foi impressa.</b> Pode gerar o PDF de novo, se precisar. Ao adicionar uma nota nova, começa uma lista nova.</span>'
+      : 'As notas que você adicionou agora. Elas continuam aqui depois de imprimir.')
+    : 'Todas as suas outras notas. <b>Marque só as que quiser imprimir.</b>';
+  $('#lista-nova').classList.toggle('oculto', !lote || !imp.notas.length);
 
   if (!imp.notas.length) {
     $('#lista').innerHTML = lote
@@ -179,26 +156,30 @@ $('#btn-gerar').addEventListener('click', () => {
   // Abre direto (síncrono ao toque) para o navegador não bloquear a nova aba
   const aba = window.open(`/api/impressao/etiquetas.pdf?${params}`, '_blank');
   if (!aba) location.href = `/api/impressao/etiquetas.pdf?${params}`;
-  // Fluxo concluído: "Para imprimir agora" fica vazia para a próxima vez
-  // (o que foi desmarcado continua disponível em "Notas antigas")
-  imp.lote = [];
-  salvarLote();
-  imp.selecionadas.clear();
-  imp.desmarcadas.clear();
+  // A lista continua na tela (marcada como impressa) para reimprimir se precisar
   $('#adicionada').classList.add('oculto');
   $('#pronto').classList.remove('oculto');
   window.scrollTo(0, 0);
   setTimeout(carregar, 1500);
 });
 
-// Veio do formulário: a nota nova entra no fluxo atual
+// "Começar lista nova": esvazia o "Para imprimir agora" (as notas vão para "Notas antigas")
+$('#lista-nova').addEventListener('click', async () => {
+  if (!imp.lote.impresso && !confirm('Tirar estas notas da lista? Elas continuam em "Notas antigas".')) return;
+  await api('/api/impressao/lista-nova', { method: 'POST' }).catch(err => aviso(err.message, 5000));
+  imp.selecionadas.clear();
+  imp.desmarcadas.clear();
+  $('#pronto').classList.add('oculto');
+  $('#adicionada').classList.add('oculto');
+  carregar();
+});
+
+// Veio do formulário: confirma a nota que acabou de entrar na lista
 function receberNova() {
   const q = new URLSearchParams(location.search);
   if (!q.has('nova')) return;
   history.replaceState(null, '', '/');
   const ids = q.get('nova').split(',').map(Number).filter(Boolean);
-  for (const id of ids) if (!imp.lote.includes(id)) imp.lote.push(id);
-  salvarLote();
   const repetidas = (q.get('repetida') || '').split(',').map(Number).filter(Boolean);
   const texto = ids.length > 1
     ? `✅ ${ids.length} notas adicionadas (${ids.map(fmt.registro).join(', ')}).`

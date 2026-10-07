@@ -16,7 +16,7 @@ as notas fiscais (NF-e / DANFE) dos produtos em estoque.
 | **Banco** | Usa o **Postgres já existente** (compartilhado com outros sistemas). Tudo fica no schema próprio `DB_SCHEMA` (padrão `notas_fiscais`), criado automaticamente com as tabelas na inicialização. Se o banco não existir, também é criado |
 | **App** | PWA instalável no Android e no iPhone, pensado primeiro para celular e funcionando no desktop |
 | **Domínio** | **DuckDNS**. O endereço público vem de `PUBLIC_BASE_URL`, nunca do endereço por onde alguém acessou |
-| **Quem envia** | **Qualquer pessoa com o link principal.** Cadastro simples (nome + e-mail) feito uma vez e lembrado no aparelho (cookie de 2 anos + cópia local) |
+| **Quem envia** | **Qualquer pessoa com o link principal.** Identificação **só pelo e-mail** (o nome é pedido apenas na primeira vez). Com o mesmo e-mail, a pessoa vê as mesmas notas em qualquer aparelho. O aparelho lembra o login (cookie de 2 anos + cópia local) |
 | **Função principal** | **Imprimir a etiqueta quase completa da nota para colar no produto, no lugar da nota inteira.** Não existe "só registrar": toda nota adicionada entra na **fila de impressão**, que é a tela inicial |
 | **Quem imprime** | Cada pessoa cadastrada vê e imprime **as notas que ela adicionou**. O admin vê todas. `IMPRESSAO_SO_ADMIN=true` restringe a impressão ao admin |
 | **Compartilhar** | Não existe nas telas: o objetivo é registrar e imprimir |
@@ -62,14 +62,18 @@ as notas fiscais (NF-e / DANFE) dos produtos em estoque.
 ### Minhas notas (`/`, tela inicial)
 - Mostra **as notas que a própria pessoa adicionou**. O admin logado vê as de todos.
 - No topo, o botão grande **➕ Adicionar nota fiscal**.
-- Aba **"Para imprimir agora"** (padrão): **só as notas adicionadas neste fluxo**, todas marcadas.
-  O aparelho guarda quais são (`localStorage`). Ao gerar o PDF, a lista zera para o próximo fluxo.
-- Aba **"Notas antigas"**: todas as notas anteriores da pessoa, **nenhuma marcada**, com os selos
+- Aba **"Para imprimir agora"** (padrão): as notas que a pessoa adicionou desde a última lista,
+  todas marcadas. A lista fica **guardada na conta** (`usuarios.lote_ids`), então vale em qualquer
+  aparelho com o mesmo e-mail. **Não some ao imprimir:** fica com o aviso "✅ Esta lista já foi
+  impressa" para reimprimir se precisar. Recomeça quando ela adiciona uma nota depois de imprimir
+  ou toca em **🧹 Começar lista nova**.
+- Aba **"Notas antigas"**: todas as outras notas da pessoa, **nenhuma marcada**, com os selos
   "não impressa" ou "impressa em …" e uma busca. Ela marca só o que quiser reimprimir.
 - **Barra fixa embaixo:** tamanho (4 grandes, 8 médias ou 16 pequenas por folha A4, e o app lembra
   a escolha) e o botão **🖨️ Gerar PDF (N)**. O PDF abre em outra aba e as notas ficam marcadas
   como impressas.
-- Primeira vez no aparelho: vai para o cadastro (nome + e-mail). "Não é você?" troca a pessoa.
+- Primeira vez no aparelho: pede o **e-mail** (e o nome, só se o e-mail for novo) e mostra as notas
+  dela. "Não é você?" troca a pessoa.
 
 ### Adicionar nota fiscal (`/nova`)
 - No topo, o botão **← Minhas notas**. Embaixo, **Cancelar e voltar para minhas notas**.
