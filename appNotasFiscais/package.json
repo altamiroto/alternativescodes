@@ -1,0 +1,24 @@
+{
+  "name": "notas-fiscais-estoque",
+  "version": "1.0.0",
+  "description": "Registro de notas fiscais do estoque com link público, QR Code e etiquetas A4",
+  "main": "server.js",
+  "private": true,
+  "engines": {
+    "node": "22.x"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "bwip-js": "^4.11.4",
+    "express": "^4.22.3",
+    "express-rate-limit": "^8.7.1",
+    "fast-xml-parser": "^5.11.2",
+    "multer": "^2.4.0",
+    "pdfjs-dist": "^5.4.299",
+    "pdfkit": "^0.20.2",
+    "pg": "^8.23.1"
+  }
+}

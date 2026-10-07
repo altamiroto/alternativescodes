@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#1f5fbf">
+  <title>Registrar nota fiscal</title>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" href="/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Notas">
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <header class="topo">
+    <a class="marca" href="/"><img src="/icons/icon-192.png" alt="">Notas do Estoque</a>
+    <div class="lado" id="quem"></div>
+  </header>
+
+  <main class="conteudo">
+
+    <!-- CADASTRO (só na primeira vez) -->
+    <section id="tela-cadastro" class="oculto">
+      <h1>Bem-vindo! 👋</h1>
+      <div class="card">
+        <p style="margin-top:0">Antes de começar, diga quem é você. <span class="suave">É só uma vez: o aparelho vai lembrar.</span></p>
+        <form id="form-cadastro" novalidate>
+          <label for="cad-nome">Seu nome</label>
+          <input id="cad-nome" type="text" autocomplete="name" required maxlength="80">
+          <label for="cad-email">Seu e-mail</label>
+          <input id="cad-email" type="email" autocomplete="email" inputmode="email" required maxlength="120">
+          <div id="cad-erro" class="aviso erro oculto"></div>
+          <button class="btn primario grande" type="submit" style="margin-top:16px">Continuar</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- ENVIO -->
+    <section id="tela-envio" class="oculto">
+      <h1>Registrar nota fiscal</h1>
+
+      <div class="card">
+        <div class="passo"><span class="num">1</span><h2>A nota</h2></div>
+        <div class="pilha" id="escolha-nota">
+          <button class="btn escolha" type="button" id="btn-pdf">
+            <span class="icone">📄</span><span>Tenho o PDF da nota<small>Escolher o arquivo no celular</small></span>
+          </button>
+          <button class="btn escolha" type="button" id="btn-chave">
+            <span class="icone">🔢</span><span>Só tenho o código da nota<small>Ler o código de barras ou digitar a chave</small></span>
+          </button>
+        </div>
+        <input type="file" id="arquivo-nota" accept=".pdf,.xml,application/pdf,text/xml,application/xml" multiple hidden>
+
+        <div id="nota-arquivos"></div>
+
+        <div id="painel-chave" class="oculto">
+          <button class="btn primario" type="button" id="btn-ler" style="margin-top:12px">
+            <span class="icone">📷</span> Ler código de barras
+          </button>
+          <label for="campo-chave">ou digite a chave de acesso (44 números)</label>
+          <input id="campo-chave" class="chave" type="text" inputmode="numeric" autocomplete="off" placeholder="0000 0000 0000 ..." maxlength="60">
+          <div id="chave-status"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="passo"><span class="num">2</span><h2>Fotos e vídeos <span class="opcional">(opcional)</span></h2></div>
+        <div class="grade-2">
+          <button class="btn discreto" type="button" id="btn-foto"><span class="icone">📷</span> Tirar foto</button>
+          <button class="btn discreto" type="button" id="btn-galeria"><span class="icone">🖼️</span> Escolher arquivos</button>
+        </div>
+        <input type="file" id="arquivo-foto" accept="image/*" capture="environment" hidden>
+        <input type="file" id="arquivo-galeria" accept="image/*,video/*,.pdf" multiple hidden>
+        <p class="suave pequeno" id="limite-txt" style="margin:10px 0 0">Até 10 arquivos, de no máximo 10 MB cada.</p>
+        <div class="miniaturas" id="miniaturas"></div>
+      </div>
+
+      <div class="card">
+        <div class="passo"><span class="num">3</span><h2>Comentário <span class="opcional">(opcional)</span></h2></div>
+        <textarea id="comentario" maxlength="2000" placeholder="Ex.: faltou uma caixa, produto chegou amassado, conferido por..."></textarea>
+      </div>
+
+      <div id="envio-erro" class="aviso erro oculto"></div>
+      <button class="btn primario grande" type="button" id="btn-enviar" disabled>✔ Enviar</button>
+      <p class="suave pequeno centro" id="enviar-dica">Escolha o PDF ou informe a chave para enviar.</p>
+      <div class="progresso oculto" id="progresso"><div></div></div>
+    </section>
+
+    <!-- SUCESSO -->
+    <section id="tela-sucesso" class="oculto centro">
+      <div class="card">
+        <div class="sucesso-icone">✅</div>
+        <h1 style="margin-bottom:4px">Nota registrada!</h1>
+        <p class="suave" style="margin-top:0">Registro <b id="ok-registro"></b></p>
+        <p id="ok-resumo" style="font-weight:600"></p>
+        <div id="ok-anteriores"></div>
+        <img id="ok-qr" class="qr" alt="QR Code do registro">
+        <p class="pequeno"><a id="ok-link" target="_blank" rel="noopener"></a></p>
+        <div class="grade-2">
+          <button class="btn discreto" type="button" id="btn-compartilhar">🔗 Compartilhar link</button>
+          <a class="btn discreto" id="btn-abrir" target="_blank" rel="noopener">👁️ Ver registro</a>
+        </div>
+      </div>
+      <button class="btn primario grande" type="button" id="btn-outra">➕ Registrar outra nota</button>
+    </section>
+
+    <p class="rodape-pagina"><a href="/instalar">📲 Instalar este app no celular</a></p>
+  </main>
+
+  <script src="/js/comum.js"></script>
+  <script src="/js/enviar.js"></script>
+</body>
+</html>

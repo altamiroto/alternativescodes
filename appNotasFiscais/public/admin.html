@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#1f5fbf">
+  <title>Painel · Notas do Estoque</title>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" href="/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="/css/app.css">
+  <link rel="stylesheet" href="/css/admin.css">
+</head>
+<body>
+  <header class="topo">
+    <a class="marca" href="/admin"><img src="/icons/icon-192.png" alt="">Painel</a>
+    <nav class="lado linha" id="menu" hidden>
+      <button class="aba ativa" data-aba="notas" type="button">Notas</button>
+      <button class="aba" data-aba="usuarios" type="button">Usuários</button>
+      <button class="aba" id="sair" type="button">Sair</button>
+    </nav>
+  </header>
+
+  <main class="conteudo largo">
+
+    <!-- LOGIN -->
+    <section id="tela-login" class="oculto" style="max-width:420px;margin:24px auto">
+      <div class="card">
+        <h1 style="margin-top:0">Entrar no painel</h1>
+        <form id="form-login">
+          <label for="login-usuario">Usuário</label>
+          <input id="login-usuario" type="text" autocomplete="username" required>
+          <label for="login-senha">Senha</label>
+          <input id="login-senha" type="password" autocomplete="current-password" required>
+          <div id="login-erro" class="aviso erro oculto"></div>
+          <button class="btn primario" type="submit" style="margin-top:16px">Entrar</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- NOTAS -->
+    <section id="tela-notas" class="oculto">
+      <div class="filtros card">
+        <div class="busca">
+          <input type="search" id="busca" placeholder="Buscar: produto, chave, nº, fornecedor, CNPJ, comentário, quem enviou, #registro">
+        </div>
+        <div class="linha" id="chips">
+          <button class="chip ativo" data-filtro="todas" type="button">Todas</button>
+          <button class="chip" data-filtro="nao_impressas" type="button">Etiqueta não impressa</button>
+          <button class="chip" data-filtro="incompletas" type="button">Dados incompletos</button>
+          <button class="chip" data-filtro="sem_chave" type="button">Sem chave</button>
+          <button class="chip" data-filtro="suspensas" type="button">Link suspenso</button>
+          <button class="chip" data-filtro="lixeira" type="button">🗑️ Lixeira</button>
+        </div>
+        <div class="linha datas">
+          <label>De <input type="date" id="data-de"></label>
+          <label>Até <input type="date" id="data-ate"></label>
+          <a class="btn pequeno discreto" href="/api/admin/export.csv" id="exportar">⬇️ Exportar CSV</a>
+        </div>
+      </div>
+
+      <div class="barra-selecao card" id="barra-selecao">
+        <label class="marcar-todas"><input type="checkbox" id="marcar-todas"> <span id="qtd-selecionadas">Selecionar todas</span></label>
+        <div class="linha">
+          <select id="layout" aria-label="Etiquetas por folha">
+            <option value="4">4 por folha (grande)</option>
+            <option value="8">8 por folha (média)</option>
+            <option value="16">16 por folha (pequena)</option>
+          </select>
+          <label class="marcar-impressa"><input type="checkbox" id="marcar-impressa" checked> marcar como impressas</label>
+          <button class="btn pequeno primario" type="button" id="btn-etiquetas" disabled>🖨️ Gerar etiquetas</button>
+        </div>
+      </div>
+
+      <div id="lista"></div>
+      <div class="linha paginacao" id="paginacao"></div>
+    </section>
+
+    <!-- USUÁRIOS -->
+    <section id="tela-usuarios" class="oculto">
+      <div class="card">
+        <h2>Quem envia notas</h2>
+        <p class="suave pequeno" style="margin-top:0">Qualquer pessoa com o link principal pode se cadastrar com nome e e-mail. Bloqueie quem não deve enviar.</p>
+        <div id="usuarios"></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- DETALHE / EDIÇÃO -->
+  <div class="gaveta oculto" id="gaveta" role="dialog" aria-modal="true" aria-labelledby="det-titulo">
+    <div class="gaveta-fundo" data-fechar></div>
+    <div class="gaveta-corpo">
+      <div class="gaveta-topo">
+        <h2 id="det-titulo" style="margin:0"></h2>
+        <button class="btn pequeno discreto" type="button" data-fechar>Fechar ✕</button>
+      </div>
+      <div id="det-conteudo"></div>
+    </div>
+  </div>
+
+  <script src="/js/comum.js"></script>
+  <script src="/js/admin.js"></script>
+</body>
+</html>

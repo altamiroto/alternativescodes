@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#1f5fbf">
+  <title>Nota fiscal</title>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" href="/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <header class="topo">
+    <a class="marca" href="/"><img src="/icons/icon-192.png" alt="">Notas do Estoque</a>
+    <div class="lado" id="registro"></div>
+  </header>
+
+  <main class="conteudo">
+    <p id="carregando" class="suave centro" style="margin-top:40px">Carregando…</p>
+
+    <section id="nao-encontrada" class="oculto centro">
+      <div class="card">
+        <div class="sucesso-icone">🔍</div>
+        <h1>Registro não encontrado</h1>
+        <p class="suave">Confira se o link está completo. Se a etiqueta foi impressa, digite o endereço exatamente como aparece nela.</p>
+      </div>
+    </section>
+
+    <section id="nota" class="oculto">
+      <div id="aviso-admin"></div>
+      <div class="card">
+        <h1 id="titulo" style="margin-top:0"></h1>
+        <dl class="dados" id="dados"></dl>
+      </div>
+
+      <div class="card centro" id="card-chave">
+        <h2>Chave de acesso</h2>
+        <img id="barras" class="barras" alt="Código de barras da chave de acesso">
+        <div class="chave-txt" id="chave"></div>
+        <div class="linha" style="justify-content:center;margin-top:12px">
+          <button class="btn pequeno" type="button" id="btn-copiar-chave">Copiar chave</button>
+        </div>
+        <p class="suave pequeno" style="margin-bottom:0">A autenticidade da nota pode ser consultada com esta chave no
+          <a href="https://www.nfe.fazenda.gov.br/portal/" target="_blank" rel="noopener">Portal Nacional da NF-e</a>.</p>
+      </div>
+
+      <div class="card" id="card-documentos">
+        <h2>Documento da nota</h2>
+        <div class="pilha" id="documentos"></div>
+      </div>
+
+      <div class="card" id="card-comentario">
+        <h2>Comentário</h2>
+        <p id="comentario" style="margin:0;white-space:pre-wrap"></p>
+      </div>
+
+      <div class="card" id="card-anexos">
+        <h2>Fotos, vídeos e anexos</h2>
+        <div class="galeria" id="galeria"></div>
+        <div class="pilha" id="outros" style="margin-top:10px"></div>
+      </div>
+
+      <div class="grade-2">
+        <button class="btn discreto" type="button" id="btn-compartilhar">🔗 Compartilhar este registro</button>
+        <a class="btn discreto" href="/">➕ Registrar outra nota</a>
+      </div>
+      <p class="rodape-pagina" id="rodape"></p>
+    </section>
+  </main>
+
+  <script src="/js/comum.js"></script>
+  <script src="/js/nota.js"></script>
+</body>
+</html>

@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#1f5fbf">
+  <title>Instalar o app</title>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" href="/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <header class="topo">
+    <a class="marca" href="/"><img src="/icons/icon-192.png" alt="">Notas do Estoque</a>
+  </header>
+  <main class="conteudo">
+    <h1>Instalar no celular 📲</h1>
+    <p class="suave">Assim o app fica com um ícone na tela inicial, como qualquer outro aplicativo.</p>
+
+    <div class="card" id="pronto" hidden>
+      <div class="aviso ok" style="margin:0">✔ O app já está instalado e aberto.</div>
+    </div>
+
+    <div class="card" id="android">
+      <h2>Android (Chrome)</h2>
+      <button class="btn primario grande" type="button" id="btn-instalar" hidden>Instalar agora</button>
+      <ol id="passos-android">
+        <li>Abra este endereço no <b>Chrome</b>.</li>
+        <li>Toque nos <b>três pontinhos ⋮</b> no canto de cima.</li>
+        <li>Toque em <b>Instalar app</b> (ou <b>Adicionar à tela inicial</b>).</li>
+      </ol>
+      <p class="suave pequeno">Depois de instalado, ao receber o PDF de uma nota no WhatsApp, toque no arquivo,
+        depois em <b>Compartilhar</b> e escolha <b>Notas</b>.</p>
+    </div>
+
+    <div class="card" id="iphone">
+      <h2>iPhone (Safari)</h2>
+      <ol>
+        <li>Abra este endereço no <b>Safari</b>.</li>
+        <li>Toque no botão <b>Compartilhar</b> (quadrado com seta para cima ⬆️), na barra de baixo.</li>
+        <li>Role e toque em <b>Adicionar à Tela de Início</b>.</li>
+        <li>Toque em <b>Adicionar</b>.</li>
+      </ol>
+      <p class="suave pequeno">Para enviar um PDF recebido no WhatsApp: abra o PDF, toque em Compartilhar,
+        <b>Salvar em Arquivos</b>. Depois, no app, toque em "Tenho o PDF da nota" e escolha o arquivo.</p>
+    </div>
+
+    <a class="btn discreto" href="/">← Voltar</a>
+  </main>
+  <script src="/js/comum.js"></script>
+  <script>
+    const ios = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const instalado = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+    if (instalado) $('#pronto').hidden = false;
+    // mostra primeiro as instruções do aparelho em uso
+    if (ios) $('main').insertBefore($('#iphone'), $('#android'));
+    let pedido = null;
+    window.addEventListener('beforeinstallprompt', e => {
+      e.preventDefault();
+      pedido = e;
+      $('#btn-instalar').hidden = false;
+    });
+    $('#btn-instalar').addEventListener('click', async () => {
+      if (!pedido) return;
+      pedido.prompt();
+      await pedido.userChoice;
+      pedido = null;
+      $('#btn-instalar').hidden = true;
+    });
+  </script>
+</body>
+</html>
