@@ -82,7 +82,7 @@ Teste: `https://minhasnotas.duckdns.org/api/health` → `{"status":"ok",...}`
 
 | Quem | Endereço | O que faz |
 |---|---|---|
-| Equipe | `https://minhasnotas.duckdns.org/` | **Minhas notas**: **➕ Adicionar nota fiscal**, volta para a lista e **🖨️ Gerar PDF** (cadastro com nome + e-mail na primeira vez) |
+| Equipe | `https://minhasnotas.duckdns.org/` | **Minhas notas**: **➕ Adicionar nota fiscal**, volta para a lista e **🖨️ Gerar PDF** (entra com o e-mail; o nome só na primeira vez) |
 | Instalar no celular | `https://minhasnotas.duckdns.org/instalar` | Passo a passo Android / iPhone |
 | Administrador | `https://minhasnotas.duckdns.org/admin` | Buscar (inclusive por produto), editar, etiquetas, exportar, bloquear usuários |
 | Quem recebe o link/QR | `https://minhasnotas.duckdns.org/n/XXXXXXXXXX` | Só visualiza |
