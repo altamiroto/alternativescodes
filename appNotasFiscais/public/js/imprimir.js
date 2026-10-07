@@ -11,6 +11,7 @@ const imp = {
   notas: [],
   selecionadas: new Set(),
   desmarcadas: new Set(), // notas da lista que a pessoa desmarcou de propósito
+  abertas: new Set(),     // notas com "Ver detalhes" aberto
 };
 
 async function carregar() {
@@ -87,17 +88,7 @@ function desenhar() {
       ? '<div class="vazio-imp">Nenhuma nota para imprimir agora.<br><span class="pequeno">Toque em <b>➕ Adicionar nota fiscal</b>.</span></div>'
       : '<div class="vazio-imp">Nenhuma nota encontrada.</div>';
   } else {
-    $('#lista').innerHTML = imp.notas.map(n => `
-      <label class="linha-check nota-imp ${imp.selecionadas.has(n.id) ? 'marcada' : ''}">
-        <input type="checkbox" data-id="${n.id}" ${imp.selecionadas.has(n.id) ? 'checked' : ''}>
-        <span class="info">
-          <b>${escapar(fmt.tituloNota(n))}</b>
-          <span>${escapar(n.emitente_nome || (n.emitente_cnpj ? `CNPJ ${fmt.cnpj(n.emitente_cnpj)}` : 'Fornecedor não identificado'))}</span>
-          <small>Registrada em ${fmt.data(n.created_at)}${n.criado_por_nome ? ` por ${escapar(n.criado_por_nome)}` : ''}
-            ${lote ? '' : n.etiqueta_impressa_em ? ` · <span class="selo ok">impressa ${fmt.data(n.etiqueta_impressa_em)}</span>` : ' · <span class="selo atencao">não impressa</span>'}</small>
-        </span>
-        <span class="reg">${fmt.registro(n.id)}</span>
-      </label>`).join('');
+    $('#lista').innerHTML = imp.notas.map(n => itemNota(n, lote)).join('');
   }
   $$('#lista input[type=checkbox]').forEach(cb => cb.addEventListener('change', () => {
     const id = Number(cb.dataset.id);
@@ -105,8 +96,80 @@ function desenhar() {
     cb.closest('.nota-imp').classList.toggle('marcada', cb.checked);
     atualizarResumo();
   }));
+  $$('#lista [data-detalhe]').forEach(b => b.addEventListener('click', () => {
+    const id = Number(b.dataset.detalhe);
+    if (imp.abertas.has(id)) imp.abertas.delete(id); else imp.abertas.add(id);
+    const aberta = imp.abertas.has(id);
+    b.closest('.nota-imp').querySelector('.detalhe').classList.toggle('oculto', !aberta);
+    b.textContent = aberta ? '▲ Fechar registro' : '👁️ Ver registro';
+  }));
   $('#linha-todas').classList.toggle('oculto', imp.notas.length < 2);
   atualizarResumo();
+}
+
+// Um item da lista: resumo sempre visível + detalhes completos ao tocar em "Ver detalhes"
+function itemNota(n, lote) {
+  const marcada = imp.selecionadas.has(n.id);
+  const aberta = imp.abertas.has(n.id);
+  const itens = Array.isArray(n.itens) ? n.itens : [];
+  const resumo = [
+    n.data_emissao ? `Emissão ${fmt.data(n.data_emissao)}` : '',
+    n.valor_total != null ? `<b>${fmt.moeda(n.valor_total)}</b>` : '',
+    itens.length ? `${itens.length} produto${itens.length > 1 ? 's' : ''}` : '',
+  ].filter(Boolean).join(' · ');
+  return `
+    <div class="nota-imp ${marcada ? 'marcada' : ''}">
+      <label class="linha-sel">
+        <input type="checkbox" data-id="${n.id}" ${marcada ? 'checked' : ''}>
+        <span class="info">
+          <b>${escapar(fmt.tituloNota(n))}</b>
+          <span>${escapar(n.emitente_nome || (n.emitente_cnpj ? `CNPJ ${fmt.cnpj(n.emitente_cnpj)}` : 'Fornecedor não identificado'))}</span>
+          ${resumo ? `<span class="resumo">${resumo}</span>` : ''}
+          ${itens.length ? `<span class="produtos">📦 ${escapar(itens.slice(0, 3).map(i => i.descricao).join(' · '))}${itens.length > 3 ? ` <i>+${itens.length - 3}</i>` : ''}</span>` : ''}
+          <small>Registrada em ${fmt.data(n.created_at)}${n.criado_por_nome ? ` por ${escapar(n.criado_por_nome)}` : ''}
+            ${lote ? '' : n.etiqueta_impressa_em ? ` · <span class="selo ok">impressa ${fmt.data(n.etiqueta_impressa_em)}</span>` : ' · <span class="selo atencao">não impressa</span>'}</small>
+        </span>
+        <span class="reg">${fmt.registro(n.id)}</span>
+      </label>
+      <div class="linha-mais">
+        <button type="button" class="mais" data-detalhe="${n.id}">${aberta ? '▲ Fechar registro' : '👁️ Ver registro'}</button>
+        ${pdfDaNota(n) ? `<a class="danfe-rapido" href="/f/${n.slug}/${pdfDaNota(n).id}" target="_blank" rel="noopener">📄 DANFE</a>` : ''}
+      </div>
+      <div class="detalhe ${aberta ? '' : 'oculto'}">${detalheNota(n, itens)}</div>
+    </div>`;
+}
+
+const pdfDaNota = n => (Array.isArray(n.arquivos) ? n.arquivos.find(a => a.tipo === 'nota_pdf') : null);
+
+function detalheNota(n, itens) {
+  const arq = a => `/f/${n.slug}/${a.id}`;
+  const arquivos = Array.isArray(n.arquivos) ? n.arquivos : [];
+  const pdf = arquivos.find(a => a.tipo === 'nota_pdf');
+  const xml = arquivos.find(a => a.tipo === 'nota_xml');
+  const anexos = arquivos.filter(a => a.tipo === 'anexo');
+  const dados = [
+    ['Chave', n.chave ? `<span class="chave-txt">${fmt.chave(n.chave)}</span>` : ''],
+    ['Fornecedor', escapar(n.emitente_nome || '')],
+    ['CNPJ', escapar(fmt.cnpj(n.emitente_cnpj))],
+    ['Emissão', fmt.data(n.data_emissao)],
+    ['Valor total', n.valor_total != null ? `<b>${fmt.moeda(n.valor_total)}</b>` : ''],
+    ['Destinatário', escapar([n.destinatario_nome, fmt.cnpj(n.destinatario_cnpj)].filter(Boolean).join(' · '))],
+    ['Protocolo', escapar(n.protocolo || '')],
+  ].filter(([, v]) => v);
+  return `
+    <dl class="dados">${dados.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>
+    ${itens.length ? `<h3>Produtos (${itens.length})</h3>
+      <ul class="itens">${itens.map(i => `<li><b>${escapar(String(i.quantidade ?? '').replace('.', ','))} ${escapar(i.unidade || '')}</b>
+        ${escapar(i.descricao)}${i.codigo ? ` <span class="suave pequeno">(${escapar(i.codigo)})</span>` : ''}</li>`).join('')}</ul>` : ''}
+    ${n.comentario ? `<h3>Comentário</h3><p style="margin:0;white-space:pre-wrap">${escapar(n.comentario)}</p>` : ''}
+    ${anexos.length ? `<h3>Fotos e anexos</h3><div class="galeria-mini">${anexos.map(a => /^image\//.test(a.mime) && a.mime !== 'image/heic'
+      ? `<a href="${arq(a)}" target="_blank" rel="noopener"><img src="${arq(a)}" alt="" loading="lazy"></a>`
+      : `<a class="anexo" href="${arq(a)}" target="_blank" rel="noopener">${a.mime.startsWith('video/') ? '🎬' : '📎'} ${escapar(a.nome || 'arquivo')}</a>`).join('')}</div>` : ''}
+    <div class="acoes-detalhe">
+      ${pdf ? `<a class="btn pequeno primario" href="${arq(pdf)}" target="_blank" rel="noopener">📄 Ver DANFE (PDF)</a>` : ''}
+      ${xml ? `<a class="btn pequeno discreto" href="${arq(xml)}" download>🧾 XML</a>` : ''}
+      <a class="btn pequeno discreto" href="/n/${n.slug}" target="_blank" rel="noopener">🔗 Abrir página do registro</a>
+    </div>`;
 }
 
 function atualizarResumo() {
