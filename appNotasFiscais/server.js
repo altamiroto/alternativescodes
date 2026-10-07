@@ -495,7 +495,13 @@ app.get('/api/impressao/notas', rota(async (req, res) => {
   if (!quem) return negarImpressao(res);
   const params = [quem.usuarioId];
   const where = ['n.deleted_at IS NULL', '($1::int IS NULL OR n.criado_por = $1)'];
-  if (req.query.filtro !== 'todas') where.push('n.etiqueta_impressa_em IS NULL');
+  if (req.query.ids !== undefined) {
+    // Notas do fluxo atual (o aparelho sabe quais a pessoa acabou de adicionar)
+    params.push(String(req.query.ids).split(',').map(Number).filter(Boolean).slice(0, 500));
+    where.push(`n.id = ANY($${params.length}::int[])`);
+  } else if (req.query.filtro === 'pendentes') {
+    where.push('n.etiqueta_impressa_em IS NULL');
+  }
   const q = String(req.query.q || '').trim();
   if (q) {
     params.push(`%${q}%`);

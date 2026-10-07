@@ -43,15 +43,15 @@
         </div>
       </div>
 
-      <h1 style="margin:20px 0 4px" id="titulo-lista">Minhas notas</h1>
-      <p class="suave pequeno" style="margin:0 0 12px">Marque as que vai imprimir e toque em <b>Gerar PDF</b> lá embaixo.</p>
+      <h1 style="margin:20px 0 12px" id="titulo-lista">Minhas notas</h1>
 
       <div class="card">
         <div class="segmentos" role="tablist">
-          <button type="button" class="ativo" data-filtro="pendentes">Para imprimir <span id="qtd-pendentes"></span></button>
-          <button type="button" data-filtro="todas">Todas</button>
+          <button type="button" class="ativo" data-filtro="lote">Para imprimir agora <span id="qtd-lote"></span></button>
+          <button type="button" data-filtro="antigas">Notas antigas</button>
         </div>
-        <input type="search" id="busca" placeholder="🔎 Buscar fornecedor, número ou produto" style="margin-top:10px">
+        <p class="suave pequeno" id="explica-filtro" style="margin:10px 0 0"></p>
+        <input type="search" id="busca" class="oculto" placeholder="🔎 Buscar fornecedor, número ou produto" style="margin-top:10px">
         <label class="linha-check selecionar-todas" id="linha-todas">
           <input type="checkbox" id="marcar-todas"> <span id="txt-todas">Selecionar todas</span>
         </label>

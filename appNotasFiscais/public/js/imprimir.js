@@ -1,33 +1,71 @@
-// Tela de impressão: escolher notas → tamanho → gerar PDF
+// Minhas notas: imprimir as notas adicionadas neste fluxo (e, se quiser, antigas)
+//
+// "Para imprimir agora" = só as notas que a pessoa adicionou desde a última impressão neste
+// aparelho (lista guardada no navegador). Nada antigo entra marcado sozinho.
+// "Notas antigas" = todas as notas dela, sem nada marcado: marca só o que quiser reimprimir.
+const CHAVE_LOTE = 'nf_lote';
 const imp = {
-  filtro: 'pendentes',
+  filtro: 'lote',
   layout: 4,
+  lote: lerLote(),        // ids adicionados neste fluxo
   notas: [],
   selecionadas: new Set(),
-  primeiraCarga: true,
+  desmarcadas: new Set(), // notas do fluxo que a pessoa desmarcou de propósito
 };
 
+function lerLote() {
+  try {
+    const ids = JSON.parse(localStorage.getItem(CHAVE_LOTE) || '[]');
+    return Array.isArray(ids) ? ids.map(Number).filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+}
+
+function salvarLote() {
+  try { localStorage.setItem(CHAVE_LOTE, JSON.stringify(imp.lote)); } catch { /* sem armazenamento */ }
+}
+
 async function carregar() {
-  const params = new URLSearchParams({ filtro: imp.filtro === 'todas' ? 'todas' : 'pendentes' });
-  const q = $('#busca').value.trim();
-  if (q) params.set('q', q);
+  let url;
+  if (imp.filtro === 'lote') {
+    if (!imp.lote.length) {
+      imp.notas = [];
+      return mostrarTela();
+    }
+    url = `/api/impressao/notas?ids=${imp.lote.join(',')}`;
+  } else {
+    const params = new URLSearchParams({ filtro: 'todas' });
+    const q = $('#busca').value.trim();
+    if (q) params.set('q', q);
+    url = `/api/impressao/notas?${params}`;
+  }
   let r;
   try {
-    r = await api(`/api/impressao/notas?${params}`);
+    r = await api(url);
   } catch (err) {
     if (err.status === 401 && !imp.tentouRecadastro && await recadastrar()) return carregar();
     if (err.status === 401 || err.status === 403) return semAcesso(err);
     aviso(err.message, 5000);
     return;
   }
-  imp.notas = r.notas;
+  // "Notas antigas" não repete as do fluxo atual
+  imp.notas = imp.filtro === 'lote' ? r.notas : r.notas.filter(n => !imp.lote.includes(n.id));
   if (r.todas) $('#titulo-lista').textContent = 'Notas de todos (administrador)';
-  $('#qtd-pendentes').textContent = `(${r.pendentes})`;
-  // Ao abrir a tela, já deixa marcadas todas as que ainda não foram impressas
-  if (imp.primeiraCarga) {
-    imp.primeiraCarga = false;
-    r.notas.filter(n => !n.etiqueta_impressa_em).forEach(n => imp.selecionadas.add(n.id));
+  if (imp.filtro === 'lote') {
+    // tira do fluxo o que não existe mais (excluída pelo admin, por exemplo)
+    const existentes = new Set(r.notas.map(n => n.id));
+    if (imp.lote.some(id => !existentes.has(id))) {
+      imp.lote = imp.lote.filter(id => existentes.has(id));
+      salvarLote();
+    }
+    // notas do fluxo entram marcadas (menos as que a pessoa desmarcou)
+    imp.lote.forEach(id => { if (!imp.desmarcadas.has(id)) imp.selecionadas.add(id); });
   }
+  mostrarTela();
+}
+
+function mostrarTela() {
   desenhar();
   $('#carregando').classList.add('oculto');
   $('#impressao').classList.remove('oculto');
@@ -60,9 +98,16 @@ function semAcesso(err) {
 }
 
 function desenhar() {
+  const lote = imp.filtro === 'lote';
+  $('#qtd-lote').textContent = imp.lote.length ? `(${imp.lote.length})` : '';
+  $('#busca').classList.toggle('oculto', lote);
+  $('#explica-filtro').innerHTML = lote
+    ? 'As notas que você adicionou agora. Depois de gerar o PDF, esta lista fica vazia para a próxima vez.'
+    : 'Todas as suas notas anteriores. <b>Marque só as que quiser imprimir.</b>';
+
   if (!imp.notas.length) {
-    $('#lista').innerHTML = imp.filtro === 'pendentes' && !$('#busca').value.trim()
-      ? '<div class="vazio-imp">Nenhuma nota esperando impressão.<br><span class="pequeno">Toque em <b>➕ Adicionar nota fiscal</b>. Para reimprimir, toque em <b>Todas</b>.</span></div>'
+    $('#lista').innerHTML = lote
+      ? '<div class="vazio-imp">Nenhuma nota para imprimir agora.<br><span class="pequeno">Toque em <b>➕ Adicionar nota fiscal</b>.</span></div>'
       : '<div class="vazio-imp">Nenhuma nota encontrada.</div>';
   } else {
     $('#lista').innerHTML = imp.notas.map(n => `
@@ -72,18 +117,18 @@ function desenhar() {
           <b>${escapar(fmt.tituloNota(n))}</b>
           <span>${escapar(n.emitente_nome || (n.emitente_cnpj ? `CNPJ ${fmt.cnpj(n.emitente_cnpj)}` : 'Fornecedor não identificado'))}</span>
           <small>Registrada em ${fmt.data(n.created_at)}${n.criado_por_nome ? ` por ${escapar(n.criado_por_nome)}` : ''}
-            ${n.etiqueta_impressa_em ? ` · <span class="selo ok">impressa ${fmt.data(n.etiqueta_impressa_em)}</span>` : ''}</small>
+            ${lote ? '' : n.etiqueta_impressa_em ? ` · <span class="selo ok">impressa ${fmt.data(n.etiqueta_impressa_em)}</span>` : ' · <span class="selo atencao">não impressa</span>'}</small>
         </span>
         <span class="reg">${fmt.registro(n.id)}</span>
       </label>`).join('');
   }
   $$('#lista input[type=checkbox]').forEach(cb => cb.addEventListener('change', () => {
     const id = Number(cb.dataset.id);
-    if (cb.checked) imp.selecionadas.add(id); else imp.selecionadas.delete(id);
+    if (cb.checked) { imp.selecionadas.add(id); imp.desmarcadas.delete(id); } else { imp.selecionadas.delete(id); imp.desmarcadas.add(id); }
     cb.closest('.nota-imp').classList.toggle('marcada', cb.checked);
     atualizarResumo();
   }));
-  $('#linha-todas').classList.toggle('oculto', imp.notas.length === 0);
+  $('#linha-todas').classList.toggle('oculto', imp.notas.length < 2);
   atualizarResumo();
 }
 
@@ -98,12 +143,12 @@ function atualizarResumo() {
   const visiveis = imp.notas.map(n => n.id);
   const todas = visiveis.length > 0 && visiveis.every(id => imp.selecionadas.has(id));
   $('#marcar-todas').checked = todas;
-  $('#txt-todas').textContent = todas ? `Desmarcar todas (${visiveis.length})` : `Selecionar todas (${visiveis.length})`;
+  $('#txt-todas').textContent = todas ? `Desmarcar todas (${visiveis.length})` : `Marcar todas (${visiveis.length})`;
 }
 
 $('#marcar-todas').addEventListener('change', e => {
   for (const n of imp.notas) {
-    if (e.target.checked) imp.selecionadas.add(n.id); else imp.selecionadas.delete(n.id);
+    if (e.target.checked) { imp.selecionadas.add(n.id); imp.desmarcadas.delete(n.id); } else { imp.selecionadas.delete(n.id); imp.desmarcadas.add(n.id); }
   }
   desenhar();
 });
@@ -134,11 +179,34 @@ $('#btn-gerar').addEventListener('click', () => {
   // Abre direto (síncrono ao toque) para o navegador não bloquear a nova aba
   const aba = window.open(`/api/impressao/etiquetas.pdf?${params}`, '_blank');
   if (!aba) location.href = `/api/impressao/etiquetas.pdf?${params}`;
+  // Fluxo concluído: "Para imprimir agora" fica vazia para a próxima vez
+  // (o que foi desmarcado continua disponível em "Notas antigas")
+  imp.lote = [];
+  salvarLote();
   imp.selecionadas.clear();
+  imp.desmarcadas.clear();
+  $('#adicionada').classList.add('oculto');
   $('#pronto').classList.remove('oculto');
   window.scrollTo(0, 0);
-  setTimeout(carregar, 1500); // atualiza a lista (as impressas saem de "Ainda não impressas")
+  setTimeout(carregar, 1500);
 });
+
+// Veio do formulário: a nota nova entra no fluxo atual
+function receberNova() {
+  const q = new URLSearchParams(location.search);
+  if (!q.has('nova')) return;
+  history.replaceState(null, '', '/');
+  const ids = q.get('nova').split(',').map(Number).filter(Boolean);
+  for (const id of ids) if (!imp.lote.includes(id)) imp.lote.push(id);
+  salvarLote();
+  const repetidas = (q.get('repetida') || '').split(',').map(Number).filter(Boolean);
+  const texto = ids.length > 1
+    ? `✅ ${ids.length} notas adicionadas (${ids.map(fmt.registro).join(', ')}).`
+    : `✅ Nota ${fmt.registro(ids[0])} adicionada. Adicione outra ou gere o PDF.`;
+  $('#adicionada').innerHTML = `<div class="aviso ok" style="margin-top:12px">${texto}</div>`
+    + (repetidas.length ? `<div class="aviso atencao">Atenção: ${repetidas.length > 1 ? 'as notas' : 'a nota'} ${repetidas.map(fmt.registro).join(', ')} já tinha${repetidas.length > 1 ? 'm' : ''} sido registrada${repetidas.length > 1 ? 's' : ''} antes.</div>` : '');
+  $('#adicionada').classList.remove('oculto');
+}
 
 // ─── Início ──────────────────────────────────────────
 (async () => {
@@ -158,22 +226,6 @@ $('#btn-gerar').addEventListener('click', () => {
       return;
     }
   } catch { /* sem internet: tenta carregar mesmo assim */ }
-  mostrarAdicionada();
+  receberNova();
   carregar();
 })();
-
-// Veio do formulário: confirma a nota que acabou de entrar na fila
-function mostrarAdicionada() {
-  const q = new URLSearchParams(location.search);
-  if (!q.has('nova')) return;
-  history.replaceState(null, '', '/');
-  const ids = q.get('nova').split(',').map(Number).filter(Boolean);
-  ids.forEach(id => imp.selecionadas.add(id));
-  const repetidas = (q.get('repetida') || '').split(',').map(Number).filter(Boolean);
-  const texto = ids.length > 1
-    ? `✅ ${ids.length} notas adicionadas (${ids.map(fmt.registro).join(', ')}).`
-    : `✅ Nota ${fmt.registro(ids[0])} adicionada. Adicione outra ou gere o PDF.`;
-  $('#adicionada').innerHTML = `<div class="aviso ok" style="margin-top:12px">${texto}</div>`
-    + (repetidas.length ? `<div class="aviso atencao">Atenção: ${repetidas.length > 1 ? 'as notas' : 'a nota'} ${repetidas.map(fmt.registro).join(', ')} já tinha${repetidas.length > 1 ? 'm' : ''} sido registrada${repetidas.length > 1 ? 's' : ''} antes.</div>` : '');
-  $('#adicionada').classList.remove('oculto');
-}
