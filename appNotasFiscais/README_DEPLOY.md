@@ -17,8 +17,13 @@ Tempo estimado: 15 minutos. Você só precisa do painel do Easypanel e do DuckDN
 
 ## 2. Banco de dados
 
-No projeto do Easypanel: **+ Service → Postgres**. Nome sugerido: `notas-db`.
-Depois de criado, copie a **Internal Connection URL** (algo como `postgres://postgres:SENHA@estoque_notas-db:5432/estoque`).
+**Pode usar o Postgres que você já tem no Easypanel**, o mesmo dos outros sistemas.
+O app cria sozinho, na primeira inicialização, um **schema próprio** (`notas_fiscais`) com as
+tabelas dele (`usuarios`, `notas`, `arquivos`, `auditoria`). As tabelas dos outros sistemas não são
+tocadas, mesmo que tenham o mesmo nome. Se o banco indicado não existir, ele também é criado.
+
+Pegue os dados de conexão no serviço Postgres do Easypanel (aba *Credentials*):
+a **Internal Connection URL** ou os campos separados (host, porta, banco, usuário, senha).
 
 ---
 
@@ -37,7 +42,9 @@ Depois de criado, copie a **Internal Connection URL** (algo como `postgres://pos
 
 **Environment** (cole e ajuste):
 ```env
+# Banco: use a URL interna OU as variáveis separadas (DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD)
 DATABASE_URL=postgres://...cole a URL interna do passo 2...
+DB_SCHEMA=notas_fiscais
 PUBLIC_BASE_URL=https://minhasnotas.duckdns.org
 SESSION_SECRET=um-texto-longo-e-aleatorio-com-mais-de-40-caracteres
 ADMIN_USER=admin
@@ -63,9 +70,10 @@ TZ=America/Sao_Paulo
 
 Clique em **Deploy**. Nos logs deve aparecer:
 ```
-✅ Banco pronto
+✅ Banco pronto: "seu_banco", tabelas no schema "notas_fiscais"
 🚀 Servidor na porta 3000
 ```
+Para ver as tabelas num cliente SQL: `SELECT * FROM notas_fiscais.notas;`
 Teste: `https://minhasnotas.duckdns.org/api/health` → `{"status":"ok",...}`
 
 ---
@@ -86,8 +94,9 @@ O código de cada nota (`/n/XXXXXXXXXX`) nunca muda, então os dois endereços f
 
 ## 6. Backup (recomendado)
 
-Tudo o que importa está em dois lugares: o **banco** e o **volume `/data`**.
-- Banco: Easypanel → serviço `notas-db` → *Backups* (se disponível) ou `pg_dump` agendado.
+Tudo o que importa está em dois lugares: o **schema `notas_fiscais` do banco** e o **volume `/data`**.
+- Banco: o backup do seu Postgres já inclui o schema. Para salvar só este app:
+  `pg_dump -n notas_fiscais nome_do_banco > notas.sql`.
 - Arquivos: copie a pasta do volume (`/var/lib/docker/volumes/...notas-data.../_data`) para fora do VPS,
   por exemplo com `rclone` para o Google Drive.
 

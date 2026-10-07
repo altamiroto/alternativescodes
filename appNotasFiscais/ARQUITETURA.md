@@ -13,6 +13,7 @@ as notas fiscais (NF-e / DANFE) dos produtos em estoque.
 | Tema | Decisão |
 |---|---|
 | **Stack** | Node.js 22 + Express + PostgreSQL. Front em HTML/JS puro, sem etapa de build. Mesma linha do `appPlanilhas` |
+| **Banco** | Usa o **Postgres já existente** (compartilhado com outros sistemas). Tudo fica no schema próprio `DB_SCHEMA` (padrão `notas_fiscais`), criado automaticamente com as tabelas na inicialização. Se o banco não existir, também é criado |
 | **App** | PWA instalável no Android e no iPhone, pensado primeiro para celular e funcionando no desktop |
 | **Domínio** | **DuckDNS**. O endereço público vem de `PUBLIC_BASE_URL`, nunca do endereço por onde alguém acessou |
 | **Quem envia** | **Qualquer pessoa com o link principal.** Cadastro simples (nome + e-mail) feito uma vez e lembrado no aparelho (cookie de 2 anos + cópia local) |
@@ -40,7 +41,7 @@ as notas fiscais (NF-e / DANFE) dos produtos em estoque.
  │  • leitura de XML / texto do PDF            │
  │  • etiquetas A4 em PDF (PDFKit + bwip-js)   │
  └──────┬─────────────────────────┬────────────┘
-   PostgreSQL               Volume /data/uploads/AAAA/MM/<id>/
+   PostgreSQL (schema notas_fiscais)   Volume /data/uploads/AAAA/MM/<id>/
 ```
 
 ---
@@ -132,7 +133,8 @@ Resultado: `parse_status` = `completo` (chave + emitente + data) | `parcial` | `
 
 ## 7. Modelo de dados
 
-Veja [`schema.sql`](schema.sql) (aplicado automaticamente ao iniciar):
+Veja [`schema.sql`](schema.sql). Ele é aplicado automaticamente ao iniciar, dentro do schema
+`DB_SCHEMA`, com trava para duas instâncias não rodarem ao mesmo tempo:
 - `usuarios`: nome, e-mail, bloqueado.
 - `notas`: `slug` (código do link, **imutável**), chave, dados da NF-e, `protocolo`, `itens` (JSONB),
   `texto_busca`, `comentario`, `publico_ativo`, `etiqueta_impressa_em`, `deleted_at` (lixeira).

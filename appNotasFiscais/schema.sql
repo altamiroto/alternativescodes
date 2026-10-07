@@ -1,6 +1,7 @@
 -- =====================================================
 -- Notas Fiscais do Estoque — Schema PostgreSQL
--- Executado automaticamente quando o servidor inicia.
+-- Executado automaticamente quando o servidor inicia, dentro do schema
+-- definido em DB_SCHEMA (padrão: notas_fiscais). Não mexe em outras tabelas do banco.
 -- =====================================================
 
 CREATE TABLE IF NOT EXISTS usuarios (

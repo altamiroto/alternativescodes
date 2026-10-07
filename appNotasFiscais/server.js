@@ -627,8 +627,8 @@ app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
 // INÍCIO
 // =====================================================
 async function iniciar() {
-  await db.iniciar();
-  console.log('✅ Banco pronto');
+  const { banco, schema } = await db.iniciar();
+  console.log(`✅ Banco pronto: "${banco}", tabelas no schema "${schema}"`);
   if (!process.env.ADMIN_PASSWORD) console.warn('⚠️  ADMIN_PASSWORD não definido: o painel /admin ficará inacessível.');
   if (!process.env.PUBLIC_BASE_URL) console.warn('⚠️  PUBLIC_BASE_URL não definido: os links usarão o endereço de cada acesso.');
   app.listen(PORT, () => console.log(`🚀 Servidor na porta ${PORT}`));
