@@ -1,0 +1,66 @@
+/* Painel do administrador */
+.aba {
+  appearance: none; border: 0; background: none; font: inherit; font-size: 15px; font-weight: 600;
+  color: var(--suave); padding: 8px 10px; border-radius: 8px; cursor: pointer;
+}
+.aba.ativa { color: var(--primaria); background: var(--primaria-clara); }
+
+.filtros .busca input { min-height: 48px; }
+.filtros #chips { margin-top: 10px; }
+.chip {
+  appearance: none; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+  border: 1.5px solid var(--borda); background: var(--card); color: var(--texto);
+  padding: 6px 12px; border-radius: 99px;
+}
+.chip.ativo { border-color: var(--primaria); background: var(--primaria-clara); color: var(--primaria); }
+.datas { margin-top: 6px; }
+.datas label { display: flex; align-items: center; gap: 6px; font-weight: 400; font-size: 14px; margin: 4px 0; }
+.datas input { min-height: 40px; padding: 6px 10px; width: auto; }
+
+.barra-selecao { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; position: sticky; top: 59px; z-index: 4; padding: 10px 14px; }
+.barra-selecao label { margin: 0; font-weight: 600; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+.barra-selecao .marcar-impressa { font-weight: 400; font-size: 14px; }
+.barra-selecao select { min-height: 40px; padding: 6px 10px; width: auto; }
+input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--primaria); }
+
+.item {
+  display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: start;
+  background: var(--card); border: 1px solid var(--borda); border-radius: 12px; padding: 12px 14px; margin-bottom: 8px; cursor: pointer;
+}
+.item:hover { border-color: var(--primaria); }
+.item.selecionado { border-color: var(--primaria); background: var(--primaria-clara); }
+.item .principal { min-width: 0; }
+.item .titulo { font-weight: 700; }
+.item .sub { color: var(--suave); font-size: 14px; overflow-wrap: anywhere; }
+.item .lateral { text-align: right; font-size: 14px; }
+.item .selos { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+.item .trecho mark { background: var(--aviso-clara); color: inherit; font-weight: 700; padding: 0 2px; border-radius: 3px; }
+.vazio { text-align: center; color: var(--suave); padding: 40px 0; }
+.paginacao { justify-content: center; margin-top: 12px; }
+
+/* Gaveta lateral de detalhes */
+.gaveta { position: fixed; inset: 0; z-index: 40; }
+.gaveta-fundo { position: absolute; inset: 0; background: rgba(0, 0, 0, .4); }
+.gaveta-corpo {
+  position: absolute; top: 0; right: 0; bottom: 0; width: min(560px, 100%);
+  background: var(--bg); overflow-y: auto; padding: 0 16px 32px; box-shadow: -8px 0 32px rgba(0,0,0,.2);
+}
+.gaveta-topo { display: flex; justify-content: space-between; align-items: center; gap: 10px; position: sticky; top: 0; background: var(--bg); padding: 14px 0; z-index: 2; }
+.form-grade { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+.form-grade .inteiro { grid-column: 1 / -1; }
+.form-grade label { font-size: 14px; margin: 10px 0 4px; }
+.form-grade input, .form-grade textarea { min-height: 44px; padding: 8px 12px; font-size: 15px; }
+.arquivo-linha { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--borda); font-size: 15px; }
+.arquivo-linha .nome { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.arquivo-linha.removido .nome { text-decoration: line-through; color: var(--suave); }
+.historico { font-size: 14px; color: var(--suave); padding-left: 18px; margin: 0; }
+
+.tabela { width: 100%; border-collapse: collapse; font-size: 15px; }
+.tabela th, .tabela td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--borda); }
+.tabela th { font-size: 13px; color: var(--suave); text-transform: uppercase; letter-spacing: .3px; }
+
+@media (max-width: 560px) {
+  .form-grade { grid-template-columns: 1fr; }
+  .tabela .esconder-celular { display: none; }
+  .barra-selecao { position: static; }
+}
