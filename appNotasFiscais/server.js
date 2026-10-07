@@ -134,6 +134,7 @@ app.get('/', pagina('enviar.html'));
 app.get('/n/:slug', pagina('nota.html'));
 app.get('/admin', pagina('admin.html'));
 app.get('/instalar', pagina('instalar.html'));
+app.get('/imprimir', pagina('imprimir.html'));
 // Share Target do Android sem o service worker ativo: só volta para o início
 app.post('/compartilhar', (req, res) => res.redirect(303, '/'));
 app.get('/robots.txt', (req, res) => res.type('text/plain').send('User-agent: *\nDisallow: /\n'));
@@ -291,6 +292,9 @@ function resumoPublico(n) {
     destinatario_nome: n.destinatario_nome,
     data_emissao: n.data_emissao,
     protocolo: n.protocolo, // sem valor_total de propósito: o valor só aparece no painel do admin
+    itens: Array.isArray(n.itens)
+      ? n.itens.map(i => ({ descricao: i.descricao, quantidade: i.quantidade, unidade: i.unidade, codigo: i.codigo }))
+      : null,
     comentario: n.comentario,
     parse_status: n.parse_status,
     created_at: n.created_at,
@@ -356,6 +360,72 @@ app.get('/api/public/:slug/qr.png', rota(async (req, res) => {
     bcid: 'qrcode', text: linkNota(req, n.slug), eclevel: 'M', scale: 6, paddingwidth: 4, paddingheight: 4, backgroundcolor: 'FFFFFF',
   });
   res.type('png').set('Cache-Control', 'public, max-age=86400').send(png);
+}));
+
+// =====================================================
+// IMPRESSÃO DE ETIQUETAS (quem está cadastrado ou o admin)
+// =====================================================
+// IMPRESSAO_SO_ADMIN=true restringe a tela /imprimir ao administrador.
+async function quemImprime(req) {
+  if (auth.ehAdmin(req)) return ADMIN;
+  if (process.env.IMPRESSAO_SO_ADMIN === 'true') return null;
+  const u = await usuarioAtual(req);
+  return u && !u.bloqueado ? u.nome : null;
+}
+
+// GET para o navegador abrir o PDF direto numa aba (funciona também no iPhone)
+//   ...etiquetas.pdf?ids=1,2,3&layout=4&marcar=1
+async function responderEtiquetas(req, res, quem) {
+  const ids = String(req.query.ids || '').split(',').map(Number).filter(Boolean).slice(0, 500);
+  const layout = [4, 8, 16].includes(Number(req.query.layout)) ? Number(req.query.layout) : 4;
+  if (!ids.length) return erro(res, 400, 'Selecione ao menos uma nota.');
+  const { rows } = await db.query(
+    `SELECT n.*, u.nome AS criado_por_nome FROM notas n LEFT JOIN usuarios u ON u.id = n.criado_por
+     WHERE n.id = ANY($1::int[]) AND n.deleted_at IS NULL ORDER BY n.id`, [ids]);
+  if (!rows.length) return erro(res, 404, 'Nenhuma nota encontrada.');
+  const pdf = await etiquetas.gerarPDF(rows.map(n => ({ ...n, url: linkNota(req, n.slug) })), layout);
+  if (req.query.marcar !== '0') {
+    await db.query('UPDATE notas SET etiqueta_impressa_em = NOW() WHERE id = ANY($1::int[])', [rows.map(n => n.id)]);
+  }
+  await db.auditar(quem, 'gerou etiquetas', null, { ids: rows.map(n => n.id), layout });
+  res.type('application/pdf').set('Content-Disposition', `inline; filename="etiquetas-${layout}-por-folha.pdf"`).send(pdf);
+}
+
+function negarImpressao(res) {
+  if (process.env.IMPRESSAO_SO_ADMIN === 'true') return erro(res, 403, 'Só o administrador pode imprimir etiquetas.');
+  return erro(res, 401, 'Faça seu cadastro para imprimir.');
+}
+
+app.get('/api/impressao/notas', rota(async (req, res) => {
+  if (!(await quemImprime(req))) return negarImpressao(res);
+  const params = [];
+  const where = ['n.deleted_at IS NULL'];
+  if (req.query.filtro !== 'todas') where.push('n.etiqueta_impressa_em IS NULL');
+  const q = String(req.query.q || '').trim();
+  if (q) {
+    params.push(`%${q}%`);
+    const p = `$${params.length}`;
+    params.push(parse.textoBusca(q) || '');
+    const pt = `$${params.length}`;
+    params.push(`%${chave.normalizar(q) || '#'}%`);
+    const pc = `$${params.length}`;
+    where.push(`(n.emitente_nome ILIKE ${p} OR n.numero ILIKE ${p} OR n.comentario ILIKE ${p} OR u.nome ILIKE ${p}
+      OR (length(${pt}) > 1 AND n.texto_busca LIKE '%' || ${pt} || '%') OR n.chave ILIKE ${pc} OR n.emitente_cnpj ILIKE ${pc})`);
+  }
+  const { rows } = await db.query(
+    `SELECT n.id, n.chave, n.numero, n.serie, n.modelo, n.emitente_nome, n.emitente_cnpj, n.data_emissao,
+            n.comentario, n.etiqueta_impressa_em, n.created_at, u.nome AS criado_por_nome
+     FROM notas n LEFT JOIN usuarios u ON u.id = n.criado_por
+     WHERE ${where.join(' AND ')} ORDER BY n.id DESC LIMIT 300`, params);
+  const { rows: [cont] } = await db.query(
+    'SELECT count(*)::int AS pendentes FROM notas WHERE deleted_at IS NULL AND etiqueta_impressa_em IS NULL');
+  res.json({ notas: rows, pendentes: cont.pendentes });
+}));
+
+app.get('/api/impressao/etiquetas.pdf', rota(async (req, res) => {
+  const quem = await quemImprime(req);
+  if (!quem) return negarImpressao(res);
+  return responderEtiquetas(req, res, quem);
 }));
 
 // =====================================================
@@ -554,23 +624,8 @@ app.post('/api/admin/arquivos/:id/restaurar', rota(async (req, res) => {
   res.json({ ok: true });
 }));
 
-// ─── Etiquetas ───────────────────────────────────────
-// GET para o navegador abrir o PDF direto numa aba (funciona também no iPhone)
-//   /api/admin/etiquetas.pdf?ids=1,2,3&layout=4&marcar=1
-app.get('/api/admin/etiquetas.pdf', rota(async (req, res) => {
-  const ids = String(req.query.ids || '').split(',').map(Number).filter(Boolean).slice(0, 500);
-  const layout = [4, 8, 16].includes(Number(req.query.layout)) ? Number(req.query.layout) : 4;
-  if (!ids.length) return erro(res, 400, 'Selecione ao menos uma nota.');
-  const { rows } = await db.query(
-    `SELECT n.*, u.nome AS criado_por_nome FROM notas n LEFT JOIN usuarios u ON u.id = n.criado_por
-     WHERE n.id = ANY($1::int[]) ORDER BY n.id`, [ids]);
-  const pdf = await etiquetas.gerarPDF(rows.map(n => ({ ...n, url: linkNota(req, n.slug) })), layout);
-  if (req.query.marcar === '1') {
-    await db.query('UPDATE notas SET etiqueta_impressa_em = NOW() WHERE id = ANY($1::int[])', [ids]);
-  }
-  await db.auditar(ADMIN, 'gerou etiquetas', null, { ids, layout });
-  res.type('application/pdf').set('Content-Disposition', `inline; filename="etiquetas-${layout}-por-folha.pdf"`).send(pdf);
-}));
+// ─── Etiquetas (admin) ───────────────────────────────
+app.get('/api/admin/etiquetas.pdf', rota((req, res) => responderEtiquetas(req, res, ADMIN)));
 
 // ─── Exportação ──────────────────────────────────────
 app.get('/api/admin/export.csv', rota(async (req, res) => {

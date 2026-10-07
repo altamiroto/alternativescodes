@@ -89,13 +89,6 @@ async function copiar(texto, mensagem = 'Copiado!') {
   aviso(mensagem);
 }
 
-async function compartilharLink(url, titulo) {
-  if (navigator.share) {
-    try { await navigator.share({ title: titulo, url }); return; } catch (e) { if (e.name === 'AbortError') return; }
-  }
-  copiar(url, 'Link copiado!');
-}
-
 // ─── Leitor de código de barras (câmera) ─────────────
 // Usa o leitor nativo (Android/Chrome) e, se não houver (iPhone), o leitor embutido em /vendor.
 async function obterLeitor() {

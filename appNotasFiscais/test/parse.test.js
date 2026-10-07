@@ -63,3 +63,18 @@ test('só a chave preenche o que dá', async () => {
   assert.strictEqual(d.emitente_cnpj, '12345678000190');
   assert.strictEqual(d.parse_status, 'so_chave');
 });
+
+test('lê a tabela de produtos do DANFE (PDF)', () => {
+  const texto = [
+    'DADOS DOS PRODUTOS / SERVIÇOS',
+    'CÓDIGO DESCRIÇÃO NCM/SH CST CFOP UN QUANT V.UNIT',
+    '001 FURADEIRA DE IMPACTO 750W 220V 84672100 000 5102 UN 1,0000 299,00 299,00',
+    'PF-20 PARAFUSADEIRA 12V BIVOLT 8467.29.91 0102 5405 PC 12,0000 89,90',
+    'DADOS ADICIONAIS',
+  ].join('\n');
+  assert.deepStrictEqual(parse.lerItensDANFE(texto).map(i => [i.codigo, i.descricao, i.unidade, i.quantidade]), [
+    ['001', 'FURADEIRA DE IMPACTO 750W 220V', 'UN', 1],
+    ['PF-20', 'PARAFUSADEIRA 12V BIVOLT', 'PC', 12],
+  ]);
+  assert.strictEqual(parse.lerItensDANFE('CNPJ 12.345.678/0001-90\nVALOR TOTAL 1.234,56'), null);
+});

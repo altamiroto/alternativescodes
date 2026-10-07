@@ -73,6 +73,19 @@ a { color: var(--primaria); }
 .conteudo { max-width: 640px; margin: 0 auto; padding: 16px 16px 48px; }
 .conteudo.largo { max-width: 1180px; }
 
+/* Abas principais: Registrar | Imprimir */
+.abas-app {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+  max-width: 640px; margin: 12px auto 0; padding: 0 16px;
+}
+.abas-app a {
+  display: flex; align-items: center; justify-content: center; text-align: center;
+  min-height: 52px; padding: 8px; border-radius: 12px;
+  border: 2px solid var(--borda); background: var(--card); color: var(--texto);
+  font-weight: 700; font-size: 16px; text-decoration: none;
+}
+.abas-app a.ativa { border-color: var(--primaria); background: var(--primaria); color: #fff; }
+
 h1 { font-size: 24px; line-height: 1.2; margin: 8px 0 16px; }
 h2 { font-size: 19px; margin: 0 0 12px; }
 .suave { color: var(--suave); }
@@ -207,5 +220,57 @@ input.chave { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; 
   background: #1b1f24; color: #fff; padding: 12px 18px; border-radius: 12px; z-index: 60; font-size: 15px;
   max-width: calc(100% - 32px); box-shadow: 0 6px 24px rgba(0,0,0,.25);
 }
+
+/* ─── Tela de impressão ─── */
+.segmentos { display: grid; grid-template-columns: 1fr auto; gap: 6px; background: var(--bg); padding: 4px; border-radius: 12px; }
+.segmentos button {
+  appearance: none; border: 0; background: transparent; font: inherit; font-weight: 600; font-size: 15px;
+  color: var(--suave); padding: 10px 14px; border-radius: 9px; cursor: pointer; min-height: 44px;
+}
+.segmentos button.ativo { background: var(--card); color: var(--primaria); box-shadow: var(--sombra); }
+
+.linha-check {
+  display: flex; align-items: center; gap: 12px; margin: 0; font-weight: 400; cursor: pointer;
+  padding: 12px; border-radius: 12px; border: 1.5px solid var(--borda); background: var(--card);
+}
+.linha-check input[type=checkbox] { flex: none; width: 26px; height: 26px; accent-color: var(--primaria); margin: 0; }
+.selecionar-todas { margin: 12px 0 8px; font-weight: 700; background: var(--bg); }
+.nota-imp { margin-top: 8px; align-items: flex-start; }
+.nota-imp.marcada { border-color: var(--primaria); background: var(--primaria-clara); }
+.nota-imp .info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.nota-imp .info span { overflow-wrap: anywhere; font-size: 15px; }
+.nota-imp .info small { color: var(--suave); font-size: 13px; }
+.nota-imp .reg { font-weight: 700; font-size: 14px; color: var(--suave); }
+.vazio-imp { text-align: center; color: var(--suave); padding: 24px 8px; }
+
+.tamanhos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.tamanho {
+  appearance: none; font: inherit; color: var(--texto); cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 12px 6px; border-radius: 12px; border: 2px solid var(--borda); background: var(--card);
+}
+.tamanho.ativo { border-color: var(--primaria); background: var(--primaria-clara); }
+.tamanho b { font-size: 15px; }
+.tamanho small { color: var(--suave); font-size: 13px; }
+/* miniatura da folha A4 com a grade de etiquetas */
+.folha {
+  width: 54px; aspect-ratio: 210 / 297; background: #fff; border: 1.5px solid #9aa4ae; border-radius: 3px;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 2px; padding: 3px; margin-bottom: 4px;
+}
+.folha i { display: block; border: 1px dashed #5c6670; border-radius: 1px; }
+.folha.g4 { grid-template-rows: repeat(2, 1fr); }
+.folha.g8 { grid-template-rows: repeat(4, 1fr); }
+.folha.g16 { grid-template-rows: repeat(8, 1fr); gap: 1px; }
+
+.barra-imprimir {
+  position: sticky; bottom: 0; z-index: 4;
+  margin: 0 -16px; padding: 10px 16px calc(12px + env(safe-area-inset-bottom));
+  background: var(--bg); border-top: 1px solid var(--borda);
+}
+.barra-imprimir #resumo-selecao { margin-bottom: 8px; font-weight: 600; }
+
+.itens { margin: 0; padding: 0; list-style: none; }
+.itens li { padding: 8px 0; border-bottom: 1px solid var(--borda); overflow-wrap: anywhere; }
+.itens li:last-child { border-bottom: 0; }
 
 .rodape-pagina { text-align: center; color: var(--suave); font-size: 14px; margin-top: 24px; }

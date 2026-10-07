@@ -1,8 +1,8 @@
 // Service worker: abre rápido (cache da "casca" do app) e recebe arquivos do "Compartilhar" do Android.
 // Dados das notas e a API sempre vêm da rede.
-const VERSAO = 'notas-v1';
+const VERSAO = 'notas-v2';
 const CASCA = [
-  '/', '/instalar', '/css/app.css', '/js/comum.js', '/js/enviar.js', '/js/nota.js',
+  '/', '/imprimir', '/instalar', '/css/app.css', '/js/comum.js', '/js/enviar.js', '/js/imprimir.js', '/js/nota.js',
   '/nota.html', '/manifest.json', '/icons/icon-192.png',
 ];
 

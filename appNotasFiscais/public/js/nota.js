@@ -36,6 +36,12 @@
     $('#card-chave').classList.add('oculto');
   }
 
+  // Produtos (sem valores)
+  const itens = n.itens || [];
+  $('#itens').innerHTML = itens.map(i => `<li><b>${escapar(String(i.quantidade ?? '').replace('.', ','))} ${escapar(i.unidade || '')}</b>
+    ${escapar(i.descricao)}${i.codigo ? ` <span class="suave pequeno">(${escapar(i.codigo)})</span>` : ''}</li>`).join('');
+  $('#card-itens').classList.toggle('oculto', itens.length === 0);
+
   // Documento da nota (PDF / XML)
   const docs = r.arquivos.filter(a => a.tipo !== 'anexo');
   $('#documentos').innerHTML = docs.map(a => a.tipo === 'nota_pdf'
@@ -57,7 +63,6 @@
     `<a class="btn discreto" href="${arq(a.id)}" target="_blank" rel="noopener">📎 ${escapar(a.nome_original || 'Arquivo')} <span class="suave pequeno">(${fmt.tamanho(a.tamanho)})</span></a>`).join('');
   $('#card-anexos').classList.toggle('oculto', anexos.length === 0);
 
-  $('#btn-compartilhar').onclick = () => compartilharLink(r.url, document.title);
   $('#rodape').textContent = `Registrado em ${fmt.dataHora(n.created_at)}${n.criado_por_nome ? ` por ${n.criado_por_nome}` : ''}`;
 
   // Administrador logado: atalho para editar

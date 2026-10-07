@@ -17,6 +17,9 @@ as notas fiscais (NF-e / DANFE) dos produtos em estoque.
 | **App** | PWA instalável no Android e no iPhone, pensado primeiro para celular e funcionando no desktop |
 | **Domínio** | **DuckDNS**. O endereço público vem de `PUBLIC_BASE_URL`, nunca do endereço por onde alguém acessou |
 | **Quem envia** | **Qualquer pessoa com o link principal.** Cadastro simples (nome + e-mail) feito uma vez e lembrado no aparelho (cookie de 2 anos + cópia local) |
+| **Função principal** | **Imprimir a etiqueta quase completa da nota para colar no produto, no lugar da nota inteira.** A tela tem duas abas: **📄 Registrar nota** e **🖨️ Imprimir etiquetas** |
+| **Quem imprime** | Quem se cadastrou (a funcionária registra e imprime). `IMPRESSAO_SO_ADMIN=true` restringe ao admin |
+| **Compartilhar** | Não existe nas telas: o objetivo é registrar e imprimir |
 | **Quem só tem o link da nota** | **Só visualiza.** Não edita nem acrescenta nada. Errou? Faz um **novo registro** |
 | **Administrador** | Usuário/senha (variáveis de ambiente). Edita, remove arquivos, suspende o link, lixeira, etiquetas, exporta, **busca por produto**, bloqueia usuários |
 | **Nota repetida** | Permitida (é o "fazer de novo"). O app **avisa** que a chave já foi registrada |
@@ -55,8 +58,15 @@ as notas fiscais (NF-e / DANFE) dos produtos em estoque.
      máscara, validada na hora.
 2. **Fotos e vídeos** (opcional): tirar foto ou escolher arquivos.
 3. **Comentário** (opcional).
-4. **Enviar**, com barra de progresso. A tela de sucesso mostra o nº do registro, o link,
-   "Compartilhar" e "Registrar outra".
+4. **Enviar**, com barra de progresso. A tela de sucesso mostra "✅ Nota registrada" e dois botões:
+   **Registrar outra nota** e **Imprimir etiquetas**.
+
+### Impressão (`/imprimir`, aba "🖨️ Imprimir etiquetas")
+1. **Tamanho:** 4, 8 ou 16 por folha, com desenho da folha. O app lembra a última escolha.
+2. **Quais notas:** abre já com **todas as ainda não impressas marcadas**. Há a opção "Todas" para
+   reimprimir e uma busca por fornecedor, número ou produto.
+3. **Gerar PDF para imprimir**, botão fixo embaixo. O PDF abre em outra aba e as notas ficam
+   marcadas como impressas.
 
 - **Android:** com o app instalado, ele aparece no menu **Compartilhar**. Basta tocar no PDF que
   chegou no WhatsApp, depois em Compartilhar e em Notas.
@@ -66,7 +76,7 @@ as notas fiscais (NF-e / DANFE) dos produtos em estoque.
 ### Página pública (`/n/<código>`)
 Mostra NF-e nº/série, fornecedor, CNPJ, emissão, destinatário, protocolo, chave com código de
 barras e botão copiar, aviso de consulta no Portal da NF-e, PDF/XML, fotos, vídeos, comentário e
-quem registrou. **Sem valor** e **sem lista de produtos**.
+quem registrou e a **lista de produtos** (quantidade e descrição). **Sem valor.**
 
 ### Painel (`/admin`)
 - **Busca:** produto, chave, nº, fornecedor, CNPJ, comentário, quem enviou ou #registro. A busca
@@ -93,9 +103,11 @@ quem registrou. **Sem valor** e **sem lista de produtos**.
 3. Destinatário.
 4. Código de barras + chave de acesso.
 5. Protocolo de autorização.
-6. Observação.
-7. "Consulte a autenticidade em www.nfe.fazenda.gov.br/portal com a chave de acesso."
-8. No canto, discreto: QR do sistema, nº do registro e link em letra miúda.
+6. **Produtos** (quantidade e descrição, sem valores): até ~10 linhas na grande, resumo de 1 a 2
+   linhas na média e nenhum na pequena; "+ N itens" quando não cabe tudo.
+7. Observação.
+8. "Consulte a autenticidade em www.nfe.fazenda.gov.br/portal com a chave de acesso."
+9. No canto, discreto: QR do sistema, nº do registro e link em letra miúda.
 
 **Testado:** todos os QR Codes foram lidos mesmo em imagem de 150 dpi borrada (simulando foto ruim).
 O código de barras precisa de uma leitura de perto, e por isso a chave também vai impressa em números.
@@ -122,8 +134,9 @@ O código de barras precisa de uma leitura de perto, e por isso a chave também 
 ## 6. Leitura dos dados
 
 1. **XML:** todos os campos, **lista de produtos** (descrição, código, EAN, NCM, quantidade) e protocolo.
-2. **PDF com texto:** chave, emitente (canhoto "RECEBEMOS DE ..."), data de emissão, protocolo e
-   valor. O **texto inteiro** é guardado para a busca por produto.
+2. **PDF com texto:** chave, emitente (canhoto "RECEBEMOS DE ..."), data de emissão, protocolo,
+   valor e **produtos da tabela do DANFE** (melhor esforço: código, descrição, NCM, CST, CFOP, UN, QTD).
+   O **texto inteiro** é guardado para a busca por produto.
 3. **Só a chave:** UF, mês/ano, CNPJ, modelo, série e número.
 4. **PDF escaneado (imagem):** o arquivo é guardado e a leitura automática fica para a Fase 2 (OCR).
 
