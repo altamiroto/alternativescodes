@@ -62,8 +62,10 @@ as notas fiscais (NF-e / DANFE) dos produtos em estoque.
 ### Minhas notas (`/`, tela inicial)
 - Mostra **as notas que a própria pessoa adicionou**. O admin logado vê as de todos.
 - No topo, o botão grande **➕ Adicionar nota fiscal**.
-- Aba **"Para imprimir"** (padrão), com as ainda não impressas **já marcadas**, e aba **"Todas"**
-  para reimprimir. Há também uma busca por fornecedor, número ou produto.
+- Aba **"Para imprimir agora"** (padrão): **só as notas adicionadas neste fluxo**, todas marcadas.
+  O aparelho guarda quais são (`localStorage`). Ao gerar o PDF, a lista zera para o próximo fluxo.
+- Aba **"Notas antigas"**: todas as notas anteriores da pessoa, **nenhuma marcada**, com os selos
+  "não impressa" ou "impressa em …" e uma busca. Ela marca só o que quiser reimprimir.
 - **Barra fixa embaixo:** tamanho (4 grandes, 8 médias ou 16 pequenas por folha A4, e o app lembra
   a escolha) e o botão **🖨️ Gerar PDF (N)**. O PDF abre em outra aba e as notas ficam marcadas
   como impressas.
