@@ -22,6 +22,7 @@ const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 const MAX_FILE_MB = Number(process.env.MAX_FILE_MB) || 10;
 const MAX_ANEXOS = 10;
+const MAX_NOTAS_LOTE = 20; // notas fiscais num mesmo envio
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
 app.set('trust proxy', Number(process.env.TRUST_PROXY ?? 1)); // nº de proxies na frente (Traefik do Easypanel = 1)
@@ -77,11 +78,11 @@ const upload = multer({
     destination: storage.TMP_DIR,
     filename: (req, file, cb) => cb(null, crypto.randomUUID()),
   }),
-  limits: { fileSize: MAX_FILE_MB * 1024 * 1024, files: MAX_ANEXOS + 2 },
+  limits: { fileSize: MAX_FILE_MB * 1024 * 1024, files: MAX_ANEXOS + MAX_NOTAS_LOTE },
 });
 
 const camposUpload = upload.fields([
-  { name: 'nota', maxCount: 2 },       // PDF e/ou XML da nota
+  { name: 'nota', maxCount: MAX_NOTAS_LOTE }, // PDFs e/ou XMLs (uma ou várias notas)
   { name: 'anexos', maxCount: MAX_ANEXOS },
 ]);
 
@@ -89,17 +90,31 @@ function arquivosDaRequisicao(req) {
   return [...(req.files?.nota || []), ...(req.files?.anexos || [])];
 }
 
-// Grava os arquivos da requisição na pasta da nota e registra no banco
+const nomeOriginal = arquivo => Buffer.from(arquivo.originalname, 'latin1').toString('utf8').slice(0, 200);
+
+// Grava os arquivos da requisição na pasta da nota e registra no banco.
+// Devolve os registros criados (para vincular os mesmos anexos a outras notas do lote).
 async function salvarArquivos(cliente, notaId, arquivos, enviadoPor) {
+  const salvos = [];
   for (const { arquivo, tipoDetectado, papel } of arquivos) {
     const rel = storage.guardar(arquivo.path, notaId, tipoDetectado.ext);
-    const abs = storage.caminhoAbsoluto(rel);
+    const meta = {
+      tipo: papel, nome: nomeOriginal(arquivo), caminho: rel, mime: tipoDetectado.mime,
+      tamanho: arquivo.size, sha256: storage.hashArquivo(storage.caminhoAbsoluto(rel)),
+    };
+    await vincularArquivos(cliente, notaId, [meta], enviadoPor);
+    salvos.push(meta);
+  }
+  return salvos;
+}
+
+// Registra arquivos já guardados no disco para uma nota (sem copiar o arquivo)
+async function vincularArquivos(cliente, notaId, metas, enviadoPor) {
+  for (const a of metas) {
     await cliente.query(
       `INSERT INTO arquivos (nota_id, tipo, nome_original, caminho, mime, tamanho, sha256, enviado_por)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [notaId, papel, Buffer.from(arquivo.originalname, 'latin1').toString('utf8').slice(0, 200), rel,
-        tipoDetectado.mime, arquivo.size, storage.hashArquivo(abs), enviadoPor]
-    );
+      [notaId, a.tipo, a.nome, a.caminho, a.mime, a.tamanho, a.sha256, enviadoPor]);
   }
 }
 
@@ -224,7 +239,64 @@ app.get('/api/chave/:chave', rota(async (req, res) => {
   res.json({ valida: true, dados: chave.decompor(c), registros_anteriores: rows });
 }));
 
-// ─── Envio de nota ───────────────────────────────────
+// ─── Envio de notas (uma ou várias de uma vez) ───────
+// Junta dados de PDF e XML da mesma nota: o XML manda, o PDF completa o que faltar
+function mesclarDados(a, b) {
+  const [principal, outro] = b.origem_dados === 'xml' ? [b, a] : [a, b];
+  const r = { ...principal };
+  for (const [k, v] of Object.entries(outro)) if (r[k] == null && v != null) r[k] = v;
+  return r;
+}
+
+// Cada nota fiscal do lote vira um registro. Arquivos com a mesma chave (PDF + XML) ficam juntos.
+async function montarLote(notaArquivos, chavesDigitadas) {
+  const grupos = [];
+  const porChave = new Map();
+  for (const n of notaArquivos) {
+    const buffer = fs.readFileSync(n.arquivo.path);
+    const dados = await parse.analisar({
+      xmlBuffer: n.papel === 'nota_xml' ? buffer : null,
+      pdfBuffer: n.papel === 'nota_pdf' ? buffer : null,
+      nomesArquivos: [nomeOriginal(n.arquivo)],
+    });
+    const existente = dados.chave && porChave.get(dados.chave);
+    if (existente) {
+      existente.dados = mesclarDados(existente.dados, dados);
+      existente.arquivos.push(n);
+    } else {
+      const grupo = { dados, arquivos: [n] };
+      grupos.push(grupo);
+      if (dados.chave) porChave.set(dados.chave, grupo);
+    }
+  }
+  for (const c of chavesDigitadas) {
+    if (porChave.has(c)) continue; // já veio pelo arquivo
+    const grupo = { dados: await parse.analisar({ chaveDigitada: c }), arquivos: [] };
+    grupos.push(grupo);
+    porChave.set(c, grupo);
+  }
+  return grupos;
+}
+
+async function inserirNota(cliente, dados, comentario, usuarioId) {
+  const valores = CAMPOS_NOTA.map(c => valorBanco(c, dados[c]));
+  for (let tentativa = 0; ; tentativa++) {
+    try {
+      await cliente.query('SAVEPOINT slug');
+      const { rows } = await cliente.query(
+        `INSERT INTO notas (slug, ${CAMPOS_NOTA.join(', ')}, comentario, criado_por)
+         VALUES ($1, ${CAMPOS_NOTA.map((_, i) => `$${i + 2}`).join(', ')}, $${CAMPOS_NOTA.length + 2}, $${CAMPOS_NOTA.length + 3})
+         RETURNING *`,
+        [novoSlug(), ...valores, comentario, usuarioId]
+      );
+      return rows[0];
+    } catch (e) {
+      if (e.code !== '23505' || tentativa > 5) throw e; // slug repetido: tenta outro
+      await cliente.query('ROLLBACK TO SAVEPOINT slug');
+    }
+  }
+}
+
 app.post('/api/notas', limite(60), camposUpload, rota(async (req, res) => {
   const enviados = arquivosDaRequisicao(req);
   try {
@@ -232,46 +304,42 @@ app.post('/api/notas', limite(60), camposUpload, rota(async (req, res) => {
     if (!usuario || usuario.bloqueado) return erro(res, 401, 'Faça seu cadastro antes de enviar.');
 
     const { notaArquivos, anexos } = classificar(req);
-    const chaveDigitada = String(req.body.chave || '');
+    const chavesInformadas = [].concat(req.body.chave || []).map(String).filter(c => c.trim());
+    const invalidas = chavesInformadas.filter(c => !chave.validar(c));
+    if (invalidas.length) return erro(res, 400, `Chave de acesso não confere: ${chave.formatarChave(invalidas[0])}. Verifique os números.`);
+    const chavesDigitadas = [...new Set(chavesInformadas.map(chave.normalizar))];
     const comentario = String(req.body.comentario || '').trim().slice(0, 2000) || null;
 
-    if (chaveDigitada && !chave.validar(chaveDigitada)) {
-      return erro(res, 400, 'A chave de acesso não confere. Verifique os números.');
-    }
-    if (!notaArquivos.length && !chaveDigitada) {
+    if (!notaArquivos.length && !chavesDigitadas.length) {
       return erro(res, 400, 'Envie o PDF da nota ou informe a chave de acesso.');
     }
-
-    const xml = notaArquivos.find(n => n.papel === 'nota_xml');
-    const pdf = notaArquivos.find(n => n.papel === 'nota_pdf');
-    const dados = await parse.analisar({
-      xmlBuffer: xml ? fs.readFileSync(xml.arquivo.path) : null,
-      pdfBuffer: pdf ? fs.readFileSync(pdf.arquivo.path) : null,
-      chaveDigitada,
-      nomesArquivos: notaArquivos.map(n => Buffer.from(n.arquivo.originalname, 'latin1').toString('utf8')),
-    });
+    // Tela "Adicionar nota fiscal": tudo o que veio (PDF, XML, chave) é a mesma nota
+    const grupos = req.body.uma_nota === '1'
+      ? [{
+        arquivos: notaArquivos,
+        dados: await parse.analisar({
+          xmlBuffer: notaArquivos.find(n => n.papel === 'nota_xml') ? fs.readFileSync(notaArquivos.find(n => n.papel === 'nota_xml').arquivo.path) : null,
+          pdfBuffer: notaArquivos.find(n => n.papel === 'nota_pdf') ? fs.readFileSync(notaArquivos.find(n => n.papel === 'nota_pdf').arquivo.path) : null,
+          chaveDigitada: chavesDigitadas[0],
+          nomesArquivos: notaArquivos.map(n => nomeOriginal(n.arquivo)),
+        }),
+      }]
+      : await montarLote(notaArquivos, chavesDigitadas);
+    if (grupos.length > MAX_NOTAS_LOTE) return erro(res, 400, `Envie no máximo ${MAX_NOTAS_LOTE} notas por vez.`);
 
     const cliente = await db.pool.connect();
-    let nota;
+    const criadas = [];
     try {
       await cliente.query('BEGIN');
-      const valores = CAMPOS_NOTA.map(c => valorBanco(c, dados[c]));
-      for (let tentativa = 0; !nota; tentativa++) {
-        try {
-          await cliente.query('SAVEPOINT slug');
-          const { rows } = await cliente.query(
-            `INSERT INTO notas (slug, ${CAMPOS_NOTA.join(', ')}, comentario, criado_por)
-             VALUES ($1, ${CAMPOS_NOTA.map((_, i) => `$${i + 2}`).join(', ')}, $${CAMPOS_NOTA.length + 2}, $${CAMPOS_NOTA.length + 3})
-             RETURNING *`,
-            [novoSlug(), ...valores, comentario, usuario.id]
-          );
-          nota = rows[0];
-        } catch (e) {
-          if (e.code !== '23505' || tentativa > 5) throw e; // slug repetido: tenta outro
-          await cliente.query('ROLLBACK TO SAVEPOINT slug');
-        }
+      let anexosSalvos = null;
+      for (const g of grupos) {
+        const nota = await inserirNota(cliente, g.dados, comentario, usuario.id);
+        await salvarArquivos(cliente, nota.id, g.arquivos, usuario.id);
+        // Fotos/vídeos do envio valem para todas as notas do lote (guardados uma vez só)
+        if (anexosSalvos) await vincularArquivos(cliente, nota.id, anexosSalvos, usuario.id);
+        else anexosSalvos = await salvarArquivos(cliente, nota.id, anexos, usuario.id);
+        criadas.push(nota);
       }
-      await salvarArquivos(cliente, nota.id, [...notaArquivos, ...anexos], usuario.id);
       await cliente.query('COMMIT');
     } catch (e) {
       await cliente.query('ROLLBACK');
@@ -280,22 +348,19 @@ app.post('/api/notas', limite(60), camposUpload, rota(async (req, res) => {
       cliente.release();
     }
 
-    let anteriores = [];
-    if (nota.chave) {
-      ({ rows: anteriores } = await db.query(
-        'SELECT id, created_at FROM notas WHERE chave = $1 AND id <> $2 AND deleted_at IS NULL ORDER BY id',
-        [nota.chave, nota.id]
-      ));
+    const resposta = [];
+    for (const nota of criadas) {
+      let anteriores = [];
+      if (nota.chave) {
+        ({ rows: anteriores } = await db.query(
+          'SELECT id, created_at FROM notas WHERE chave = $1 AND id < $2 AND deleted_at IS NULL ORDER BY id',
+          [nota.chave, nota.id]
+        ));
+      }
+      await db.auditar(usuario.nome, 'criou', nota.id, { origem: nota.origem_dados, lote: criadas.length });
+      resposta.push({ id: nota.id, slug: nota.slug, url: linkNota(req, nota.slug), nota: resumoPublico(nota), registros_anteriores: anteriores });
     }
-    await db.auditar(usuario.nome, 'criou', nota.id, { origem: nota.origem_dados, arquivos: notaArquivos.length + anexos.length });
-
-    res.status(201).json({
-      id: nota.id,
-      slug: nota.slug,
-      url: linkNota(req, nota.slug),
-      nota: resumoPublico(nota),
-      registros_anteriores: anteriores,
-    });
+    res.status(201).json({ notas: resposta });
   } finally {
     storage.removerTmp(enviados); // o que não foi movido (erro) é apagado
   }
@@ -392,12 +457,13 @@ app.get('/api/public/:slug/qr.png', rota(async (req, res) => {
 // =====================================================
 // IMPRESSÃO DE ETIQUETAS (quem está cadastrado ou o admin)
 // =====================================================
-// IMPRESSAO_SO_ADMIN=true restringe a tela /imprimir ao administrador.
+// IMPRESSAO_SO_ADMIN=true restringe a impressão ao administrador.
+// Devolve quem imprime e de quais notas: a pessoa vê só as que ela adicionou; o admin vê todas.
 async function quemImprime(req) {
-  if (auth.ehAdmin(req)) return ADMIN;
+  if (auth.ehAdmin(req)) return { nome: ADMIN, usuarioId: null };
   if (process.env.IMPRESSAO_SO_ADMIN === 'true') return null;
   const u = await usuarioAtual(req);
-  return u && !u.bloqueado ? u.nome : null;
+  return u && !u.bloqueado ? { nome: u.nome, usuarioId: u.id } : null;
 }
 
 // GET para o navegador abrir o PDF direto numa aba (funciona também no iPhone)
@@ -408,13 +474,14 @@ async function responderEtiquetas(req, res, quem) {
   if (!ids.length) return erro(res, 400, 'Selecione ao menos uma nota.');
   const { rows } = await db.query(
     `SELECT n.*, u.nome AS criado_por_nome FROM notas n LEFT JOIN usuarios u ON u.id = n.criado_por
-     WHERE n.id = ANY($1::int[]) AND n.deleted_at IS NULL ORDER BY n.id`, [ids]);
+     WHERE n.id = ANY($1::int[]) AND n.deleted_at IS NULL AND ($2::int IS NULL OR n.criado_por = $2)
+     ORDER BY n.id`, [ids, quem.usuarioId]);
   if (!rows.length) return erro(res, 404, 'Nenhuma nota encontrada.');
   const pdf = await etiquetas.gerarPDF(rows.map(n => ({ ...n, url: linkNota(req, n.slug) })), layout);
   if (req.query.marcar !== '0') {
     await db.query('UPDATE notas SET etiqueta_impressa_em = NOW() WHERE id = ANY($1::int[])', [rows.map(n => n.id)]);
   }
-  await db.auditar(quem, 'gerou etiquetas', null, { ids: rows.map(n => n.id), layout });
+  await db.auditar(quem.nome, 'gerou etiquetas', null, { ids: rows.map(n => n.id), layout });
   res.type('application/pdf').set('Content-Disposition', `inline; filename="etiquetas-${layout}-por-folha.pdf"`).send(pdf);
 }
 
@@ -424,9 +491,10 @@ function negarImpressao(res) {
 }
 
 app.get('/api/impressao/notas', rota(async (req, res) => {
-  if (!(await quemImprime(req))) return negarImpressao(res);
-  const params = [];
-  const where = ['n.deleted_at IS NULL'];
+  const quem = await quemImprime(req);
+  if (!quem) return negarImpressao(res);
+  const params = [quem.usuarioId];
+  const where = ['n.deleted_at IS NULL', '($1::int IS NULL OR n.criado_por = $1)'];
   if (req.query.filtro !== 'todas') where.push('n.etiqueta_impressa_em IS NULL');
   const q = String(req.query.q || '').trim();
   if (q) {
@@ -445,8 +513,9 @@ app.get('/api/impressao/notas', rota(async (req, res) => {
      FROM notas n LEFT JOIN usuarios u ON u.id = n.criado_por
      WHERE ${where.join(' AND ')} ORDER BY n.id DESC LIMIT 300`, params);
   const { rows: [cont] } = await db.query(
-    'SELECT count(*)::int AS pendentes FROM notas WHERE deleted_at IS NULL AND etiqueta_impressa_em IS NULL');
-  res.json({ notas: rows, pendentes: cont.pendentes });
+    `SELECT count(*)::int AS pendentes FROM notas
+     WHERE deleted_at IS NULL AND etiqueta_impressa_em IS NULL AND ($1::int IS NULL OR criado_por = $1)`, [quem.usuarioId]);
+  res.json({ notas: rows, pendentes: cont.pendentes, todas: quem.usuarioId === null });
 }));
 
 app.get('/api/impressao/etiquetas.pdf', rota(async (req, res) => {
@@ -652,7 +721,7 @@ app.post('/api/admin/arquivos/:id/restaurar', rota(async (req, res) => {
 }));
 
 // ─── Etiquetas (admin) ───────────────────────────────
-app.get('/api/admin/etiquetas.pdf', rota((req, res) => responderEtiquetas(req, res, ADMIN)));
+app.get('/api/admin/etiquetas.pdf', rota((req, res) => responderEtiquetas(req, res, { nome: ADMIN, usuarioId: null })));
 
 // ─── Exportação ──────────────────────────────────────
 app.get('/api/admin/export.csv', rota(async (req, res) => {
@@ -695,7 +764,7 @@ app.use('/api', (req, res) => erro(res, 404, 'Rota não encontrada.'));
 app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
   if (err instanceof multer.MulterError) {
     const msg = err.code === 'LIMIT_FILE_SIZE' ? `Arquivo grande demais. O limite é ${MAX_FILE_MB} MB por arquivo.`
-      : err.code === 'LIMIT_FILE_COUNT' || err.code === 'LIMIT_UNEXPECTED_FILE' ? `Máximo de ${MAX_ANEXOS} fotos/vídeos por envio.`
+      : err.code === 'LIMIT_FILE_COUNT' || err.code === 'LIMIT_UNEXPECTED_FILE' ? `Máximo de ${MAX_NOTAS_LOTE} notas e ${MAX_ANEXOS} fotos/vídeos por envio.`
       : 'Não foi possível receber o arquivo.';
     storage.removerTmp(arquivosDaRequisicao(req));
     return erro(res, 413, msg);

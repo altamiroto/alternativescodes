@@ -73,7 +73,6 @@ a { color: var(--primaria); }
 .conteudo { max-width: 640px; margin: 0 auto; padding: 16px 16px 48px; }
 .conteudo.largo { max-width: 1180px; }
 
-.voltar { display: inline-block; margin: 4px 0 0; font-weight: 600; text-decoration: none; font-size: 16px; }
 
 h1 { font-size: 24px; line-height: 1.2; margin: 8px 0 16px; }
 h2 { font-size: 19px; margin: 0 0 12px; }
@@ -155,6 +154,7 @@ input.chave { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; 
 .aviso.atencao { background: var(--aviso-clara); color: var(--aviso); }
 .aviso.erro { background: var(--erro-clara); color: var(--erro); }
 
+.titulo-lista { font-size: 16px; margin: 16px 0 0; }
 .arquivo-escolhido {
   display: flex; align-items: center; gap: 12px;
   padding: 12px; border: 1.5px dashed var(--borda); border-radius: 12px; margin-top: 10px;
@@ -232,7 +232,6 @@ input.chave { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; 
 .nota-imp .reg { font-weight: 700; font-size: 14px; color: var(--suave); }
 .vazio-imp { text-align: center; color: var(--suave); padding: 24px 8px; }
 
-.tamanhos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .tamanho {
   appearance: none; font: inherit; color: var(--texto); cursor: pointer;
   display: flex; flex-direction: column; align-items: center; gap: 4px;
@@ -256,7 +255,15 @@ input.chave { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; 
   margin: 0 -16px; padding: 10px 16px calc(12px + env(safe-area-inset-bottom));
   background: var(--bg); border-top: 1px solid var(--borda);
 }
-.barra-imprimir #resumo-selecao { margin-bottom: 8px; font-weight: 600; }
+.barra-imprimir #resumo-selecao { margin-top: 6px; font-weight: 600; }
+.tamanhos-compacto { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+.tamanhos-compacto > span { flex: 1 0 100%; }
+.tamanhos-compacto .tamanho { flex: 1; flex-direction: row; justify-content: center; gap: 6px; padding: 6px; font-weight: 700; font-size: 16px; }
+.tamanhos-compacto .tamanho small { font-weight: 400; }
+.tamanhos-compacto .folha { width: 20px; margin: 0; padding: 1.5px; gap: 1px; border-width: 1px; }
+.tamanhos-compacto .folha i { border-width: 0; background: #9aa4ae; }
+@media (max-width: 380px) { .tamanhos-compacto .tamanho small { display: none; } }
+.voltar-topo { min-height: 44px; font-weight: 700; }
 
 .itens { margin: 0; padding: 0; list-style: none; }
 .itens li { padding: 8px 0; border-bottom: 1px solid var(--borda); overflow-wrap: anywhere; }

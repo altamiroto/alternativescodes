@@ -10,6 +10,9 @@ const estado = {
 const telas = ['cadastro', 'envio'];
 function mostrar(tela) {
   for (const t of telas) $(`#tela-${t}`).classList.toggle('oculto', t !== tela);
+  // No formulário, o topo mostra "← Minhas notas" no lugar da marca
+  $('#voltar-topo').classList.toggle('oculto', tela !== 'envio');
+  $('#marca').classList.toggle('oculto', tela === 'envio');
   window.scrollTo(0, 0);
 }
 
@@ -240,6 +243,7 @@ $('#btn-enviar').addEventListener('click', async () => {
   if (estado.chave) form.append('chave', estado.chave);
   for (const { file } of estado.anexos) form.append('anexos', file, file.name);
   form.append('comentario', $('#comentario').value);
+  form.append('uma_nota', '1'); // PDF + XML + chave desta tela são a mesma nota
 
   try {
     const r = await enviarComProgresso(form);
@@ -250,17 +254,18 @@ $('#btn-enviar').addEventListener('click', async () => {
     erro.classList.remove('oculto');
   } finally {
     estado.enviando = false;
-    botao.textContent = '✔ Adicionar à impressão';
+    botao.textContent = '✔ Adicionar nota';
     $('#progresso').classList.add('oculto');
     $('#progresso > div').style.width = '0';
     atualizarBotaoEnviar();
   }
 });
 
-// Nota salva: volta para a fila de impressão, já com ela marcada
+// Nota salva: volta para "Minhas notas", já com ela marcada para imprimir
 function irParaImpressao(r) {
-  const params = new URLSearchParams({ nova: r.id });
-  if (r.registros_anteriores?.length) params.set('repetida', r.registros_anteriores.map(a => a.id).join(','));
+  const nota = r.notas[0];
+  const params = new URLSearchParams({ nova: nota.id });
+  if (nota.registros_anteriores?.length) params.set('repetida', nota.id);
   location.href = `/?${params}`;
 }
 
@@ -302,7 +307,10 @@ async function receberCompartilhados() {
     } catch { /* segue para o cadastro */ }
   }
 
-  if (usuario) {
+  if (usuario && new URLSearchParams(location.search).has('trocar')) {
+    history.replaceState(null, '', '/nova');
+    mostrar('cadastro');
+  } else if (usuario) {
     mostrarUsuario(usuario);
     mostrar('envio');
   } else {

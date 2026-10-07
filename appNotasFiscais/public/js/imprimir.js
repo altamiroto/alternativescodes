@@ -21,6 +21,7 @@ async function carregar() {
     return;
   }
   imp.notas = r.notas;
+  if (r.todas) $('#titulo-lista').textContent = 'Notas de todos (administrador)';
   $('#qtd-pendentes').textContent = `(${r.pendentes})`;
   // Ao abrir a tela, já deixa marcadas todas as que ainda não foram impressas
   if (imp.primeiraCarga) {
@@ -61,7 +62,7 @@ function semAcesso(err) {
 function desenhar() {
   if (!imp.notas.length) {
     $('#lista').innerHTML = imp.filtro === 'pendentes' && !$('#busca').value.trim()
-      ? '<div class="vazio-imp">Nenhuma etiqueta esperando impressão.<br><span class="pequeno">Toque em <b>➕ Adicionar nota fiscal</b>. Para reimprimir, toque em <b>Todas</b>.</span></div>'
+      ? '<div class="vazio-imp">Nenhuma nota esperando impressão.<br><span class="pequeno">Toque em <b>➕ Adicionar nota fiscal</b>. Para reimprimir, toque em <b>Todas</b>.</span></div>'
       : '<div class="vazio-imp">Nenhuma nota encontrada.</div>';
   } else {
     $('#lista').innerHTML = imp.notas.map(n => `
@@ -90,8 +91,9 @@ function atualizarResumo() {
   const qtd = imp.selecionadas.size;
   const folhas = Math.ceil(qtd / imp.layout);
   $('#resumo-selecao').textContent = qtd
-    ? `${qtd} nota${qtd > 1 ? 's' : ''} selecionada${qtd > 1 ? 's' : ''} · ${folhas} folha${folhas > 1 ? 's' : ''} A4`
-    : 'Nenhuma nota selecionada';
+    ? `${qtd} nota${qtd > 1 ? 's' : ''} marcada${qtd > 1 ? 's' : ''} · ${folhas} folha${folhas > 1 ? 's' : ''} A4`
+    : 'Nenhuma nota marcada';
+  $('#btn-gerar').textContent = qtd ? `🖨️ Gerar PDF (${qtd})` : '🖨️ Gerar PDF';
   $('#btn-gerar').disabled = qtd === 0;
   const visiveis = imp.notas.map(n => n.id);
   const todas = visiveis.length > 0 && visiveis.every(id => imp.selecionadas.has(id));
@@ -150,7 +152,7 @@ $('#btn-gerar').addEventListener('click', () => {
   try {
     const { usuario } = await api('/api/eu');
     if (usuario) {
-      $('#quem').innerHTML = `Olá, <b>${escapar(usuario.nome.split(' ')[0])}</b>`;
+      $('#quem').innerHTML = `Olá, <b>${escapar(usuario.nome.split(' ')[0])}</b><br><a href="/nova?trocar=1" class="pequeno">não é você?</a>`;
     } else if (!(await api('/api/admin/eu')).admin && !(await recadastrar())) {
       location.replace('/nova'); // primeira vez neste aparelho: cadastro
       return;
@@ -165,10 +167,13 @@ function mostrarAdicionada() {
   const q = new URLSearchParams(location.search);
   if (!q.has('nova')) return;
   history.replaceState(null, '', '/');
-  const id = Number(q.get('nova'));
-  imp.selecionadas.add(id);
-  const repetida = q.get('repetida');
-  $('#adicionada').innerHTML = `<div class="aviso ok" style="margin-top:12px">✅ Nota ${fmt.registro(id)} adicionada à impressão.</div>`
-    + (repetida ? `<div class="aviso atencao">Atenção: essa nota já tinha sido registrada antes (${repetida.split(',').map(fmt.registro).join(', ')}).</div>` : '');
+  const ids = q.get('nova').split(',').map(Number).filter(Boolean);
+  ids.forEach(id => imp.selecionadas.add(id));
+  const repetidas = (q.get('repetida') || '').split(',').map(Number).filter(Boolean);
+  const texto = ids.length > 1
+    ? `✅ ${ids.length} notas adicionadas (${ids.map(fmt.registro).join(', ')}).`
+    : `✅ Nota ${fmt.registro(ids[0])} adicionada. Adicione outra ou gere o PDF.`;
+  $('#adicionada').innerHTML = `<div class="aviso ok" style="margin-top:12px">${texto}</div>`
+    + (repetidas.length ? `<div class="aviso atencao">Atenção: ${repetidas.length > 1 ? 'as notas' : 'a nota'} ${repetidas.map(fmt.registro).join(', ')} já tinha${repetidas.length > 1 ? 'm' : ''} sido registrada${repetidas.length > 1 ? 's' : ''} antes.</div>` : '');
   $('#adicionada').classList.remove('oculto');
 }

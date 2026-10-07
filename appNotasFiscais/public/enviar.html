@@ -15,7 +15,8 @@
 </head>
 <body>
   <header class="topo">
-    <a class="marca" href="/"><img src="/icons/icon-192.png" alt="">Notas do Estoque</a>
+    <a class="marca" href="/" id="marca"><img src="/icons/icon-192.png" alt="">Notas do Estoque</a>
+    <a class="btn pequeno discreto voltar-topo oculto" href="/" id="voltar-topo">← Minhas notas</a>
     <div class="lado" id="quem"></div>
   </header>
 
@@ -39,7 +40,6 @@
 
     <!-- ENVIO -->
     <section id="tela-envio" class="oculto">
-      <a href="/" class="voltar">← Etiquetas para imprimir</a>
       <h1>Adicionar nota fiscal</h1>
 
       <div class="card">
@@ -84,9 +84,10 @@
       </div>
 
       <div id="envio-erro" class="aviso erro oculto"></div>
-      <button class="btn primario grande" type="button" id="btn-enviar" disabled>✔ Adicionar à impressão</button>
+      <button class="btn primario grande" type="button" id="btn-enviar" disabled>✔ Adicionar nota</button>
       <p class="suave pequeno centro" id="enviar-dica">Escolha o PDF ou informe a chave da nota.</p>
       <div class="progresso oculto" id="progresso"><div></div></div>
+      <a class="btn discreto" href="/" style="margin-top:12px">Cancelar e voltar para minhas notas</a>
     </section>
 
     <!-- SUCESSO -->
