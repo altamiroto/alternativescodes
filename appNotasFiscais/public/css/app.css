@@ -73,18 +73,7 @@ a { color: var(--primaria); }
 .conteudo { max-width: 640px; margin: 0 auto; padding: 16px 16px 48px; }
 .conteudo.largo { max-width: 1180px; }
 
-/* Abas principais: Registrar | Imprimir */
-.abas-app {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
-  max-width: 640px; margin: 12px auto 0; padding: 0 16px;
-}
-.abas-app a {
-  display: flex; align-items: center; justify-content: center; text-align: center;
-  min-height: 52px; padding: 8px; border-radius: 12px;
-  border: 2px solid var(--borda); background: var(--card); color: var(--texto);
-  font-weight: 700; font-size: 16px; text-decoration: none;
-}
-.abas-app a.ativa { border-color: var(--primaria); background: var(--primaria); color: #fff; }
+.voltar { display: inline-block; margin: 4px 0 0; font-weight: 600; text-decoration: none; font-size: 16px; }
 
 h1 { font-size: 24px; line-height: 1.2; margin: 8px 0 16px; }
 h2 { font-size: 19px; margin: 0 0 12px; }

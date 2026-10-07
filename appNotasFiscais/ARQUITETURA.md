@@ -17,8 +17,8 @@ as notas fiscais (NF-e / DANFE) dos produtos em estoque.
 | **App** | PWA instalável no Android e no iPhone, pensado primeiro para celular e funcionando no desktop |
 | **Domínio** | **DuckDNS**. O endereço público vem de `PUBLIC_BASE_URL`, nunca do endereço por onde alguém acessou |
 | **Quem envia** | **Qualquer pessoa com o link principal.** Cadastro simples (nome + e-mail) feito uma vez e lembrado no aparelho (cookie de 2 anos + cópia local) |
-| **Função principal** | **Imprimir a etiqueta quase completa da nota para colar no produto, no lugar da nota inteira.** A tela tem duas abas: **📄 Registrar nota** e **🖨️ Imprimir etiquetas** |
-| **Quem imprime** | Quem se cadastrou (a funcionária registra e imprime). `IMPRESSAO_SO_ADMIN=true` restringe ao admin |
+| **Função principal** | **Imprimir a etiqueta quase completa da nota para colar no produto, no lugar da nota inteira.** Não existe "só registrar": toda nota adicionada entra na **fila de impressão**, que é a tela inicial |
+| **Quem imprime** | Quem se cadastrou (a funcionária adiciona e imprime). `IMPRESSAO_SO_ADMIN=true` restringe ao admin |
 | **Compartilhar** | Não existe nas telas: o objetivo é registrar e imprimir |
 | **Quem só tem o link da nota** | **Só visualiza.** Não edita nem acrescenta nada. Errou? Faz um **novo registro** |
 | **Administrador** | Usuário/senha (variáveis de ambiente). Edita, remove arquivos, suspende o link, lixeira, etiquetas, exporta, **busca por produto**, bloqueia usuários |
@@ -34,7 +34,8 @@ as notas fiscais (NF-e / DANFE) dos produtos em estoque.
 
 ```
  Celular (PWA) / Desktop
-   /            → envio (cadastro na 1ª vez)
+   /            → etiquetas para imprimir (tela inicial)
+   /nova        → adicionar nota fiscal (cadastro na 1ª vez)
    /n/:código   → página pública da nota (só leitura)
    /admin       → painel
    /instalar    → como instalar no Android / iPhone
@@ -51,27 +52,29 @@ as notas fiscais (NF-e / DANFE) dos produtos em estoque.
 
 ## 3. Fluxos
 
-### Envio (equipe)
+### Tela inicial (`/`): etiquetas para imprimir
+- No topo, o botão grande **➕ Adicionar nota fiscal**.
+- **1. Tamanho:** 4, 8 ou 16 por folha, com desenho da folha. O app lembra a última escolha.
+- **2. Notas:** abre com **todas as ainda não impressas já marcadas**. Há a opção "Todas" para
+  reimprimir e uma busca por fornecedor, número ou produto.
+- **🖨️ Gerar PDF para imprimir**, botão fixo embaixo. O PDF abre em outra aba e as notas ficam
+  marcadas como impressas.
+- Primeira vez no aparelho: vai para o cadastro (nome + e-mail) e depois para "Adicionar nota fiscal".
+
+### Adicionar nota fiscal (`/nova`)
 1. **A nota**, com dois botões grandes:
-   - "Tenho o PDF da nota": aceita PDF e/ou XML.
+   - "Tenho o PDF da nota": aceita PDF e/ou XML. Se o PDF não trouxer a chave no texto, o app usa
+     a chave do nome do arquivo.
    - "Só tenho o código da nota": **ler o código de barras com a câmera** ou digitar a chave com
      máscara, validada na hora.
-2. **Fotos e vídeos** (opcional): tirar foto ou escolher arquivos.
+2. **Fotos e vídeos** (opcional).
 3. **Comentário** (opcional).
-4. **Enviar**, com barra de progresso. A tela de sucesso mostra "✅ Nota registrada" e dois botões:
-   **Registrar outra nota** e **Imprimir etiquetas**.
+4. **✔ Adicionar à impressão:** salva a nota e volta para a tela inicial, com ela já marcada e o
+   aviso "Nota #0005 adicionada" (mais um alerta se a nota já tinha sido registrada antes).
 
-### Impressão (`/imprimir`, aba "🖨️ Imprimir etiquetas")
-1. **Tamanho:** 4, 8 ou 16 por folha, com desenho da folha. O app lembra a última escolha.
-2. **Quais notas:** abre já com **todas as ainda não impressas marcadas**. Há a opção "Todas" para
-   reimprimir e uma busca por fornecedor, número ou produto.
-3. **Gerar PDF para imprimir**, botão fixo embaixo. O PDF abre em outra aba e as notas ficam
-   marcadas como impressas.
-
-- **Android:** com o app instalado, ele aparece no menu **Compartilhar**. Basta tocar no PDF que
-  chegou no WhatsApp, depois em Compartilhar e em Notas.
-- **iPhone:** o iOS não permite isso para web apps. O caminho é salvar em Arquivos e escolher pelo
-  app (instruções em `/instalar`).
+- **Android:** com o app instalado, ele aparece no menu de compartilhamento do sistema. Basta tocar
+  no PDF que chegou no WhatsApp e escolher Notas.
+- **iPhone:** salvar o PDF em Arquivos e escolher pelo app (instruções em `/instalar`).
 
 ### Página pública (`/n/<código>`)
 Mostra NF-e nº/série, fornecedor, CNPJ, emissão, destinatário, protocolo, chave com código de

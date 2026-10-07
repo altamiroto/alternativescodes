@@ -148,13 +148,14 @@ const pagina = arquivo => (req, res) => {
   }
   res.set('Cache-Control', 'no-cache').type('html').send(paginasProntas[arquivo]);
 };
-app.get('/', pagina('enviar.html'));
+app.get('/', pagina('imprimir.html'));      // tela principal: etiquetas para imprimir
+app.get('/nova', pagina('enviar.html'));   // adicionar nota fiscal
 app.get('/n/:slug', pagina('nota.html'));
 app.get('/admin', pagina('admin.html'));
 app.get('/instalar', pagina('instalar.html'));
-app.get('/imprimir', pagina('imprimir.html'));
+app.get('/imprimir', (req, res) => res.redirect(301, '/')); // endereço antigo
 // Share Target do Android sem o service worker ativo: só volta para o início
-app.post('/compartilhar', (req, res) => res.redirect(303, '/'));
+app.post('/compartilhar', (req, res) => res.redirect(303, '/nova'));
 app.get('/robots.txt', (req, res) => res.type('text/plain').send('User-agent: *\nDisallow: /\n'));
 app.get('/sw.js', (req, res) => res.set('Cache-Control', 'no-cache').sendFile(path.join(PUBLIC_DIR, 'sw.js')));
 app.use(express.static(PUBLIC_DIR, {

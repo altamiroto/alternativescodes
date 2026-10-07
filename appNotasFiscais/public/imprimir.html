@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="robots" content="noindex, nofollow">
   <meta name="theme-color" content="#1f5fbf">
-  <title>Imprimir etiquetas</title>
+  <title>Etiquetas para imprimir</title>
   <link rel="manifest" href="/manifest.json">
   <link rel="icon" href="/icons/icon-192.png">
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
@@ -16,10 +16,6 @@
     <a class="marca" href="/"><img src="/icons/icon-192.png" alt="">Notas do Estoque</a>
     <div class="lado" id="quem"></div>
   </header>
-  <nav class="abas-app">
-    <a href="/">📄 Registrar nota</a>
-    <a href="/imprimir" class="ativa">🖨️ Imprimir etiquetas</a>
-  </nav>
 
   <main class="conteudo">
     <p id="carregando" class="suave centro" style="margin-top:40px">Carregando…</p>
@@ -35,7 +31,9 @@
     </section>
 
     <section id="impressao" class="oculto">
-      <h1>Imprimir etiquetas</h1>
+      <a class="btn primario grande" href="/nova" style="margin-top:8px">➕ Adicionar nota fiscal</a>
+      <div id="adicionada" class="oculto"></div>
+      <h1 style="margin-top:20px">Etiquetas para imprimir</h1>
 
       <!-- Resultado da última impressão -->
       <div id="pronto" class="card oculto">
@@ -82,6 +80,7 @@
         <div id="resumo-selecao" class="suave pequeno centro">Nenhuma nota selecionada</div>
         <button class="btn primario grande" type="button" id="btn-gerar" disabled>🖨️ Gerar PDF para imprimir</button>
       </div>
+      <p class="rodape-pagina"><a href="/instalar">📲 Instalar este app no celular</a></p>
     </section>
   </main>
 

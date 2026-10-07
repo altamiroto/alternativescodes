@@ -46,12 +46,14 @@ async function recadastrar() {
 }
 
 function semAcesso(err) {
+  // Ainda não se cadastrou: vai para o cadastro (fica na tela de adicionar nota)
+  if (err.status === 401) { location.replace('/nova'); return; }
   $('#carregando').classList.add('oculto');
   if (err.status === 403) {
-    $('#sem-acesso-titulo').textContent = 'Só o administrador imprime';
-    $('#sem-acesso-texto').textContent = err.message;
-    $('#sem-acesso-botao').textContent = 'Entrar como administrador';
-    $('#sem-acesso-botao').href = '/admin';
+    $('#sem-acesso-titulo').textContent = 'A impressão é feita pelo administrador';
+    $('#sem-acesso-texto').textContent = 'Você pode continuar adicionando as notas fiscais normalmente.';
+    $('#sem-acesso-botao').textContent = '➕ Adicionar nota fiscal';
+    $('#sem-acesso-botao').href = '/nova';
   }
   $('#sem-acesso').classList.remove('oculto');
 }
@@ -59,7 +61,7 @@ function semAcesso(err) {
 function desenhar() {
   if (!imp.notas.length) {
     $('#lista').innerHTML = imp.filtro === 'pendentes' && !$('#busca').value.trim()
-      ? '<div class="vazio-imp">🎉 Todas as notas já têm etiqueta impressa.<br><span class="pequeno">Para imprimir de novo, toque em <b>Todas</b>.</span></div>'
+      ? '<div class="vazio-imp">Nenhuma etiqueta esperando impressão.<br><span class="pequeno">Toque em <b>➕ Adicionar nota fiscal</b>. Para reimprimir, toque em <b>Todas</b>.</span></div>'
       : '<div class="vazio-imp">Nenhuma nota encontrada.</div>';
   } else {
     $('#lista').innerHTML = imp.notas.map(n => `
@@ -147,7 +149,26 @@ $('#btn-gerar').addEventListener('click', () => {
   } catch { /* padrão: 4 */ }
   try {
     const { usuario } = await api('/api/eu');
-    if (usuario) $('#quem').innerHTML = `Olá, <b>${escapar(usuario.nome.split(' ')[0])}</b>`;
-  } catch { /* segue */ }
+    if (usuario) {
+      $('#quem').innerHTML = `Olá, <b>${escapar(usuario.nome.split(' ')[0])}</b>`;
+    } else if (!(await api('/api/admin/eu')).admin && !(await recadastrar())) {
+      location.replace('/nova'); // primeira vez neste aparelho: cadastro
+      return;
+    }
+  } catch { /* sem internet: tenta carregar mesmo assim */ }
+  mostrarAdicionada();
   carregar();
 })();
+
+// Veio do formulário: confirma a nota que acabou de entrar na fila
+function mostrarAdicionada() {
+  const q = new URLSearchParams(location.search);
+  if (!q.has('nova')) return;
+  history.replaceState(null, '', '/');
+  const id = Number(q.get('nova'));
+  imp.selecionadas.add(id);
+  const repetida = q.get('repetida');
+  $('#adicionada').innerHTML = `<div class="aviso ok" style="margin-top:12px">✅ Nota ${fmt.registro(id)} adicionada à impressão.</div>`
+    + (repetida ? `<div class="aviso atencao">Atenção: essa nota já tinha sido registrada antes (${repetida.split(',').map(fmt.registro).join(', ')}).</div>` : '');
+  $('#adicionada').classList.remove('oculto');
+}

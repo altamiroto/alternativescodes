@@ -82,7 +82,7 @@ Teste: `https://minhasnotas.duckdns.org/api/health` → `{"status":"ok",...}`
 
 | Quem | Endereço | O que faz |
 |---|---|---|
-| Equipe | `https://minhasnotas.duckdns.org/` | Cadastro (nome + e-mail, uma vez só), aba **📄 Registrar nota** e aba **🖨️ Imprimir etiquetas** |
+| Equipe | `https://minhasnotas.duckdns.org/` | Tela **Etiquetas para imprimir**, com o botão **➕ Adicionar nota fiscal** (cadastro com nome + e-mail na primeira vez) |
 | Instalar no celular | `https://minhasnotas.duckdns.org/instalar` | Passo a passo Android / iPhone |
 | Administrador | `https://minhasnotas.duckdns.org/admin` | Buscar (inclusive por produto), editar, etiquetas, exportar, bloquear usuários |
 | Quem recebe o link/QR | `https://minhasnotas.duckdns.org/n/XXXXXXXXXX` | Só visualiza |

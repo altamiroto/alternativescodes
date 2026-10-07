@@ -1,8 +1,8 @@
 // Service worker: abre rápido (cache da "casca" do app) e recebe arquivos do "Compartilhar" do Android.
 // Dados das notas e a API sempre vêm da rede.
-const VERSAO = 'notas-v3';
+const VERSAO = 'notas-v4';
 const CASCA = [
-  '/', '/imprimir', '/instalar', '/css/app.css', '/js/comum.js', '/js/enviar.js', '/js/imprimir.js', '/js/nota.js',
+  '/', '/nova', '/instalar', '/css/app.css', '/js/comum.js', '/js/enviar.js', '/js/imprimir.js', '/js/nota.js',
   '/nota.html', '/manifest.json', '/icons/icon-192.png',
 ];
 
@@ -26,7 +26,7 @@ async function receberCompartilhamento(request) {
     `/compartilhado/${Date.now()}-${i}`,
     new Response(f, { headers: { 'Content-Type': f.type || 'application/octet-stream', 'X-Nome': encodeURIComponent(f.name || 'arquivo') } })
   )));
-  return Response.redirect('/?compartilhado=1', 303);
+  return Response.redirect('/nova?compartilhado=1', 303);
 }
 
 self.addEventListener('fetch', e => {
