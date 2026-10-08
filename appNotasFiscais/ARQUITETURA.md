@@ -69,6 +69,10 @@ as notas fiscais (NF-e / DANFE) dos produtos em estoque.
   ou toca em **🧹 Começar lista nova**.
 - Aba **"Notas antigas"**: todas as outras notas da pessoa, **nenhuma marcada**, com os selos
   "não impressa" ou "impressa em …" e uma busca. Ela marca só o que quiser reimprimir.
+- Cada nota da lista (nas duas abas) mostra emissão, **valor**, quantidade e nomes dos produtos.
+  Os botões **👁️ Ver registro** (abre ali mesmo: chave, fornecedor, destinatário, protocolo,
+  produtos, comentário, fotos, DANFE/XML e link para a página do registro) e **📄 DANFE** abrem o
+  PDF. Quem registrou vê o valor; a etiqueta e a página pública continuam sem valor.
 - **Barra fixa embaixo:** tamanho (4 grandes, 8 médias ou 16 pequenas por folha A4, e o app lembra
   a escolha) e o botão **🖨️ Gerar PDF (N)**. O PDF abre em outra aba e as notas ficam marcadas
   como impressas.

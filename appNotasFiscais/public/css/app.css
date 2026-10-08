@@ -224,12 +224,32 @@ input.chave { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; 
 }
 .linha-check input[type=checkbox] { flex: none; width: 26px; height: 26px; accent-color: var(--primaria); margin: 0; }
 .selecionar-todas { margin: 12px 0 8px; font-weight: 700; background: var(--bg); }
-.nota-imp { margin-top: 8px; align-items: flex-start; }
+.nota-imp { margin-top: 8px; border: 1.5px solid var(--borda); border-radius: 12px; background: var(--card); overflow: hidden; }
 .nota-imp.marcada { border-color: var(--primaria); background: var(--primaria-clara); }
+.nota-imp .linha-sel { display: flex; align-items: flex-start; gap: 12px; margin: 0; padding: 12px 12px 6px; font-weight: 400; cursor: pointer; }
+.nota-imp .linha-sel input[type=checkbox] { flex: none; width: 26px; height: 26px; accent-color: var(--primaria); margin: 0; }
 .nota-imp .info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .nota-imp .info span { overflow-wrap: anywhere; font-size: 15px; }
+.nota-imp .info .resumo { font-size: 14px; }
 .nota-imp .info small { color: var(--suave); font-size: 13px; }
 .nota-imp .reg { font-weight: 700; font-size: 14px; color: var(--suave); }
+.nota-imp .info .produtos { font-size: 13px; color: var(--texto); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.nota-imp .linha-mais { display: flex; align-items: stretch; gap: 8px; padding: 2px 12px 12px 50px; }
+.nota-imp .mais, .nota-imp .danfe-rapido {
+  appearance: none; font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; text-decoration: none;
+  display: inline-flex; align-items: center; justify-content: center; min-height: 42px; padding: 6px 12px;
+  border-radius: 10px; border: 1.5px solid var(--primaria); background: var(--card); color: var(--primaria);
+}
+.nota-imp .mais { flex: 1; }
+.nota-imp .danfe-rapido { white-space: nowrap; border-color: var(--borda); color: var(--texto); }
+.nota-imp .detalhe { padding: 4px 12px 14px; border-top: 1px dashed var(--borda); background: var(--card); }
+.nota-imp .detalhe h3 { font-size: 14px; margin: 14px 0 4px; color: var(--suave); text-transform: uppercase; letter-spacing: .3px; }
+.nota-imp .detalhe .dados { margin-top: 10px; font-size: 14px; }
+.nota-imp .detalhe .itens li { font-size: 14px; padding: 6px 0; }
+.acoes-detalhe { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.galeria-mini { display: flex; flex-wrap: wrap; gap: 6px; }
+.galeria-mini img { width: 72px; height: 72px; object-fit: cover; border-radius: 8px; border: 1px solid var(--borda); display: block; }
+.galeria-mini .anexo { font-size: 14px; padding: 6px 0; }
 .vazio-imp { text-align: center; color: var(--suave); padding: 24px 8px; }
 
 .tamanho {

@@ -535,8 +535,13 @@ app.get('/api/impressao/notas', rota(async (req, res) => {
       OR (length(${pt}) > 1 AND n.texto_busca LIKE '%' || ${pt} || '%') OR n.chave ILIKE ${pc} OR n.emitente_cnpj ILIKE ${pc})`);
   }
   const { rows } = await db.query(
-    `SELECT n.id, n.chave, n.numero, n.serie, n.modelo, n.emitente_nome, n.emitente_cnpj, n.data_emissao,
-            n.comentario, n.etiqueta_impressa_em, n.created_at, u.nome AS criado_por_nome
+    // Quem registrou vê tudo da própria nota: valor, produtos, DANFE (PDF/XML) e anexos
+    `SELECT n.id, n.slug, n.chave, n.numero, n.serie, n.modelo, n.uf, n.emitente_nome, n.emitente_cnpj,
+            n.destinatario_nome, n.destinatario_cnpj, n.data_emissao, n.valor_total, n.protocolo, n.itens,
+            n.comentario, n.etiqueta_impressa_em, n.created_at, u.nome AS criado_por_nome,
+            (SELECT coalesce(json_agg(json_build_object('id', a.id, 'tipo', a.tipo, 'nome', a.nome_original,
+                    'mime', a.mime, 'tamanho', a.tamanho) ORDER BY a.id), '[]')
+             FROM arquivos a WHERE a.nota_id = n.id AND a.deleted_at IS NULL) AS arquivos
      FROM notas n LEFT JOIN usuarios u ON u.id = n.criado_por
      WHERE ${where.join(' AND ')} ORDER BY n.id DESC LIMIT 300`, params);
   const { rows: [cont] } = await db.query(
