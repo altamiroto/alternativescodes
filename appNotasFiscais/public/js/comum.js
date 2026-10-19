@@ -22,6 +22,7 @@ function escapar(s) {
 
 const fmt = {
   data: iso => (iso ? String(iso).slice(0, 10).split('-').reverse().join('/') : ''),
+  hora: iso => (iso ? new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : ''),
   dataHora: iso => (iso ? new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : ''),
   moeda: v => (v == null || v === '' ? '' : Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })),
   numero: n => (n ? Number(n).toLocaleString('pt-BR') : ''),

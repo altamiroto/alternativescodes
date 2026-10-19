@@ -287,8 +287,9 @@ async function completarPelaConsulta(nota, quem) {
   } catch (err) {
     storage.removerTmp(novos.map(n => n.arquivo));
     if (!(err instanceof consultaDanfe.ErroConsulta)) throw err;
-    await db.auditar(quem, 'consulta DANFE falhou', nota.id, { codigo: err.codigo });
-    return { status: 'falhou', codigo: err.codigo, mensagem: err.message };
+    const proxima = await agendarNovaConsulta(nota, err);
+    await db.auditar(quem, 'consulta DANFE falhou', nota.id, { codigo: err.codigo, status: err.status, nova_tentativa: proxima });
+    return { status: 'falhou', codigo: err.codigo, mensagem: err.message, nova_tentativa: proxima };
   }
 
   const cliente = await db.pool.connect();
@@ -313,8 +314,49 @@ async function completarPelaConsulta(nota, quem) {
         [nota.id, ...campos.map(c => valorBanco(c, dados[c]))]);
     }
   }
+  await db.query('UPDATE notas SET consulta_proxima_em = NULL, consulta_erro = NULL WHERE id = $1', [nota.id]);
   await db.auditar(quem, 'consulta DANFE', nota.id, { xml: !!xml, arquivos: novos.map(n => n.papel) });
   return { status: 'completa', xml: !!xml, pdf: novos.some(n => n.papel === 'nota_pdf') };
+}
+
+// Falha passageira (limite da API, serviço fora, sem rede): agenda nova tentativa automática,
+// com espera crescente, enquanto a nota estiver na janela de datas da consulta. Devolve quando
+// será a próxima tentativa (ou null, se não vai tentar de novo).
+const ESPERAS_MIN = [2, 5, 15, 30, 60, 120, 240, 480];
+
+async function agendarNovaConsulta(nota, err) {
+  const tentativas = (nota.consulta_tentativas || 0) + 1;
+  const tentarDeNovo = consultaDanfe.ePassageira(err.codigo) && tentativas <= ESPERAS_MIN.length
+    && consultaDanfe.dentroDaJanela(nota.chave);
+  const segundos = tentarDeNovo
+    ? Math.max(ESPERAS_MIN[tentativas - 1] * 60, (err.esperarSegundos || 0) + 5)
+    : null;
+  const { rows: [r] } = await db.query(
+    `UPDATE notas SET consulta_tentativas = $2, consulta_erro = $3,
+            consulta_proxima_em = CASE WHEN $4::int IS NULL THEN NULL ELSE NOW() + make_interval(secs => $4::int) END
+     WHERE id = $1 RETURNING consulta_proxima_em`, [nota.id, tentativas, err.codigo, segundos]);
+  return r?.consulta_proxima_em || null;
+}
+
+// Tentativas automáticas: a cada minuto pega as notas cuja hora chegou (uma de cada vez)
+let tentandoConsultas = false;
+async function tentarConsultasPendentes() {
+  if (tentandoConsultas || !consultaDanfe.ativa() || consultaDanfe.segundosParaLiberar() > 0) return;
+  tentandoConsultas = true;
+  try {
+    const { rows } = await db.query(
+      `SELECT * FROM notas WHERE consulta_proxima_em <= NOW() AND deleted_at IS NULL ORDER BY consulta_proxima_em LIMIT 5`);
+    for (const nota of rows) {
+      const r = await completarPelaConsulta(nota, 'sistema (nova tentativa)');
+      if (r.status === 'completa') console.log(`📥 Nota #${nota.id} completada pela Consulta DANFE (tentativa automática).`);
+      else if (!r.nova_tentativa) await db.query('UPDATE notas SET consulta_proxima_em = NULL WHERE id = $1', [nota.id]);
+      if (r.codigo === 'limite') break; // a API pediu para esperar: o resto fica para depois
+    }
+  } catch (err) {
+    console.warn('⚠️  Tentativas automáticas da Consulta DANFE:', err.message);
+  } finally {
+    tentandoConsultas = false;
+  }
 }
 
 // ─── Envio de notas (uma ou várias de uma vez) ───────
@@ -658,6 +700,7 @@ app.get('/api/impressao/notas', rota(async (req, res) => {
     `SELECT n.id, n.slug, n.chave, n.numero, n.serie, n.modelo, n.uf, n.emitente_nome, n.emitente_cnpj,
             n.destinatario_nome, n.destinatario_cnpj, n.data_emissao, n.valor_total, n.protocolo, n.itens,
             n.comentario, n.etiqueta_impressa_em, n.created_at, u.nome AS criado_por_nome,
+            n.consulta_proxima_em, n.consulta_erro,
             (SELECT coalesce(json_agg(json_build_object('id', a.id, 'tipo', a.tipo, 'nome', a.nome_original,
                     'mime', a.mime, 'tamanho', a.tamanho) ORDER BY a.id), '[]')
              FROM arquivos a WHERE a.nota_id = n.id AND a.deleted_at IS NULL) AS arquivos
@@ -906,6 +949,13 @@ app.get('/api/admin/export.csv', rota(async (req, res) => {
 }));
 
 // ─── Usuários (quem envia) ───────────────────────────
+// Diagnóstico da Consulta DANFE: mostra o que o servidor recebe da API por IPv4 e por IPv6
+app.get('/api/admin/consulta-danfe/teste', rota(async (req, res) => {
+  const { rows: [fila] } = await db.query(
+    'SELECT count(*)::int AS aguardando, min(consulta_proxima_em) AS proxima FROM notas WHERE consulta_proxima_em IS NOT NULL AND deleted_at IS NULL');
+  res.json({ ...await consultaDanfe.diagnosticar(), fila });
+}));
+
 app.get('/api/admin/usuarios', rota(async (req, res) => {
   const { rows } = await db.query(
     `SELECT u.*, (SELECT count(*)::int FROM notas n WHERE n.criado_por = u.id AND n.deleted_at IS NULL) AS qtd_notas
@@ -947,6 +997,7 @@ async function iniciar() {
   if (!process.env.ADMIN_PASSWORD) console.warn('⚠️  ADMIN_PASSWORD não definido: o painel /admin ficará inacessível.');
   if (!process.env.PUBLIC_BASE_URL) console.warn('⚠️  PUBLIC_BASE_URL não definido: os links usarão o endereço de cada acesso.');
   app.listen(PORT, () => console.log(`🚀 Servidor na porta ${PORT}`));
+  setInterval(tentarConsultasPendentes, 60 * 1000).unref();
 }
 
 if (require.main === module) {

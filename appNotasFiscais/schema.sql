@@ -77,3 +77,9 @@ ALTER TABLE notas ADD COLUMN IF NOT EXISTS texto_busca TEXT;
 -- v1.3: lista "Para imprimir agora" guardada na conta da pessoa (vale em qualquer aparelho)
 ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS lote_ids INT[] NOT NULL DEFAULT '{}';
 ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS lote_impresso BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- v1.4: Consulta DANFE que falhou por motivo passageiro (limite, serviço fora) é tentada de novo sozinha
+ALTER TABLE notas ADD COLUMN IF NOT EXISTS consulta_proxima_em TIMESTAMPTZ;
+ALTER TABLE notas ADD COLUMN IF NOT EXISTS consulta_tentativas INT NOT NULL DEFAULT 0;
+ALTER TABLE notas ADD COLUMN IF NOT EXISTS consulta_erro TEXT;
+CREATE INDEX IF NOT EXISTS idx_notas_consulta_proxima ON notas(consulta_proxima_em) WHERE consulta_proxima_em IS NOT NULL;
