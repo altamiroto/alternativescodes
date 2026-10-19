@@ -63,7 +63,9 @@ function carregarPdfjs() {
 }
 const FONTES_PDF = path.join(path.dirname(require.resolve('pdfjs-dist/package.json')), 'standard_fonts') + path.sep;
 
-async function extrairTextoPDF(buffer) {
+// Extrai o texto do PDF e, de cada página, os pedaços de texto com posição (x, y, largura).
+// A posição é o que permite ler a tabela de produtos coluna por coluna.
+async function extrairPDF(buffer) {
   const pdfjs = await carregarPdfjs();
   const doc = await pdfjs.getDocument({
     data: new Uint8Array(buffer),
@@ -72,14 +74,18 @@ async function extrairTextoPDF(buffer) {
     verbosity: 0,
   }).promise;
   let texto = '';
-  const paginas = Math.min(doc.numPages, 5); // DANFE: dados principais estão na 1ª página
-  for (let i = 1; i <= paginas; i++) {
+  const paginas = [];
+  const total = Math.min(doc.numPages, 10);
+  for (let i = 1; i <= total; i++) {
     const pagina = await doc.getPage(i);
     const conteudo = await pagina.getTextContent();
     texto += conteudo.items.map(it => it.str + (it.hasEOL ? '\n' : ' ')).join('') + '\n';
+    paginas.push(conteudo.items
+      .filter(it => it.str && it.str.trim())
+      .map(it => ({ s: it.str.trim(), x: it.transform[4], y: it.transform[5], w: it.width || 0, h: Math.abs(it.transform[3]) || 6 })));
   }
   await doc.destroy();
-  return texto;
+  return { texto, paginas };
 }
 
 function numeroBR(txt) {
@@ -92,30 +98,174 @@ function dataBR(txt) {
   return m ? `${m[3]}-${m[2]}-${m[1]}` : null;
 }
 
-// Linha da tabela "DADOS DOS PRODUTOS" do DANFE (ordem padrão das colunas):
-//   CÓDIGO  DESCRIÇÃO  NCM  CST/CSOSN  CFOP  UN  QTD  V.UNIT ...
+// ─── Produtos do DANFE (PDF) ─────────────────────────
+// 1º caminho: tabela por colunas. Acha o cabeçalho da tabela de produtos (DESCRIÇÃO, NCM, CFOP,
+// UN, QTD...) e usa a posição x de cada título para saber de que coluna é cada texto.
+//   - layout clássico (MOC 7.0): cada produto começa na linha em que aparece o NCM (8 dígitos);
+//   - layout novo (NT 2026.010, "CST / CFOP", "QTD / UN", NCM dentro da descrição): cada produto
+//     começa na linha em que aparece o código.
+// As linhas seguintes completam a descrição. 2º caminho (se o 1º não achar nada): uma linha de
+// texto com o produto inteiro.
+const NCM_RE = /^\d{4}\.?\d{2}\.?\d{2}$/;
+// "Informações adicionais do produto" impressas embaixo da descrição (ex.: "FNSKU:X005B4",
+// "pICMSUFDest=18,00%"): daí para baixo não é mais descrição
+const INFO_ADICIONAL = /^[A-Za-z][A-Za-z0-9_]{1,24}[:=]\S/;
+const NCM_NA_DESCRICAO = /\[?\s*NCM(?:\/SH)?[:\s]*(\d{4}\.?\d{2}\.?\d{2})\s*\]?/i;
+const TITULO_FIM = /DADOS ADICIONAIS|C[ÁA]LCULO DO ISSQN|INFORMA[ÇC][ÕO]ES COMPLEMENTARES|RESERVADO AO FISCO/i;
+
+// Nome da coluna pelo título (a ordem importa: "QTD / UN" é quantidade, "CST / CFOP" é CFOP)
+function nomeDaColuna(titulo) {
+  const t = titulo.trim();
+  if (/DESCRI[ÇC][ÃA]O/i.test(t)) return 'descricao';
+  if (/^NCM/i.test(t)) return 'ncm';
+  if (/QU?A?N?T(IDADE)?\b|QTDE?\b|^QTD/i.test(t)) return 'qtd';
+  if (/^UN(ID(ADE)?)?\.?(\s*(COM|TRIB)\.?)?$/i.test(t)) return 'un';
+  if (/CFOP/i.test(t)) return 'cfop';
+  if (/^(O\/)?CS(T|OSN)\b/i.test(t)) return 'cst';
+  if (/^C[ÓO]D(IGO|\.)?/i.test(t)) return 'codigo';
+  return null;
+}
+
+// Junta os pedaços que estão na mesma altura (mesma linha da página), da esquerda para a direita
+function agruparLinhas(pedacos) {
+  const linhas = [];
+  for (const p of [...pedacos].sort((a, b) => b.y - a.y || a.x - b.x)) {
+    const linha = linhas.find(l => Math.abs(l.y - p.y) <= Math.max(1.5, p.h * 0.3));
+    if (linha) linha.pedacos.push(p); else linhas.push({ y: p.y, pedacos: [p] });
+  }
+  for (const l of linhas) l.pedacos.sort((a, b) => a.x - b.x);
+  return linhas.sort((a, b) => b.y - a.y);
+}
+
+const textoDaLinha = l => l.pedacos.map(p => p.s).join(' ');
+
+// Títulos do cabeçalho: palavras coladas (PDFs que quebram por palavra) viram um título só
+function colunasDoCabecalho(cab) {
+  const titulos = [];
+  for (const p of cab.pedacos) {
+    const ultimo = titulos[titulos.length - 1];
+    if (ultimo && p.x - (ultimo.x + ultimo.w) < 3) {
+      ultimo.s += ` ${p.s}`;
+      ultimo.w = p.x + p.w - ultimo.x;
+    } else {
+      titulos.push({ ...p });
+    }
+  }
+  const cols = [];
+  for (const t of titulos) {
+    const nome = nomeDaColuna(t.s);
+    cols.push({ nome: nome && !cols.some(c => c.nome === nome) ? nome : null, x: t.x, fim: t.x + t.w });
+  }
+  return cols.sort((a, b) => a.x - b.x);
+}
+
+function lerItensPorColunas(paginas) {
+  const itens = [];
+  for (const pedacos of paginas) {
+    const linhas = agruparLinhas(pedacos);
+    const cab = linhas.find(l => {
+      const t = textoDaLinha(l);
+      return /DESCRI[ÇC][ÃA]O/i.test(t) && /NCM|CFOP/i.test(t) && /QU?A?N?T|QTDE?|\bUN/i.test(t);
+    });
+    if (!cab) continue;
+    const cols = colunasDoCabecalho(cab);
+    if (!cols.some(c => c.nome === 'descricao')) continue;
+    if (!cols.some(c => c.nome === 'codigo') && cols[0] && !cols[0].nome) cols[0].nome = 'codigo';
+    const temNcm = cols.some(c => c.nome === 'ncm');
+    if (!temNcm && !cols.some(c => c.nome === 'codigo')) continue;
+
+    // Cada texto pertence à coluna cujo título começa logo antes dele. O conteúdo pode começar
+    // um pouco à esquerda do título (texto centralizado, números alinhados à direita): margem de
+    // até 12 pontos, sem passar de 30% da distância até o título anterior.
+    // A descrição costuma ter o título centralizado numa coluna larga: começa logo depois do
+    // fim do título anterior (ex.: "CÓDIGO PRODUTO").
+    const inicioDe = cols.map((c, i) => {
+      if (i === 0) return -Infinity;
+      const pelaMargem = c.x - Math.min(12, (c.x - cols[i - 1].x) * 0.3);
+      return c.nome === 'descricao' ? Math.min(pelaMargem, cols[i - 1].fim + 1) : pelaMargem;
+    });
+    const colunaDe = p => {
+      let achada = null;
+      cols.forEach((c, i) => { if (p.x >= inicioDe[i]) achada = c; });
+      return achada ? achada.nome : null;
+    };
+
+    const fim = linhas.find(l => l.y < cab.y && TITULO_FIM.test(textoDaLinha(l)));
+    let atual = null;
+    for (const l of linhas) {
+      if (l.y >= cab.y || (fim && l.y <= fim.y)) continue;
+      const porColuna = {};
+      for (const p of l.pedacos) {
+        const c = colunaDe(p);
+        if (c) (porColuna[c] ||= []).push(p.s);
+      }
+      const ncm = (porColuna.ncm || []).join('').replace(/\D/g, '');
+      const codigo = (porColuna.codigo || []).join(' ').trim();
+      // Com coluna NCM: o produto começa onde o NCM aparece (pode quebrar em 2 linhas em
+      // fontes largas, então basta começar com 4+ dígitos ao lado de código ou descrição)
+      const inicia = temNcm
+        ? ncm.length >= 4 && !!(codigo || porColuna.descricao)
+        : !!codigo && !!porColuna.descricao;
+      if (inicia) {
+        atual = { codigo: codigo || null, descricao: '', ncm: ncm || null, _qtd: [], _un: [] };
+        itens.push(atual);
+      } else if (atual && ncm && (atual.ncm || '').length < 8) {
+        atual.ncm = `${atual.ncm || ''}${ncm}`; // resto do NCM na linha de baixo
+      }
+      if (!atual) continue;
+      if (porColuna.descricao && !atual._fimDescricao) {
+        const trecho = porColuna.descricao.join(' ');
+        if (!inicia && (INFO_ADICIONAL.test(trecho))) atual._fimDescricao = true;
+        else atual.descricao = `${atual.descricao} ${trecho}`.trim();
+      }
+      if (porColuna.qtd) atual._qtd.push(...porColuna.qtd.join(' ').split(/\s+/));
+      if (porColuna.un) atual._un.push(...porColuna.un.join(' ').split(/\s+/));
+    }
+  }
+  return itens.map(i => {
+    // NCM escrito dentro da descrição (layout novo): vai para o campo NCM
+    const m = NCM_NA_DESCRICAO.exec(i.descricao);
+    const descricao = (m ? i.descricao.replace(m[0], ' ') : i.descricao).replace(/\s+/g, ' ').trim();
+    const qtd = i._qtd.find(t => /^\d[\d.]*(,\d+)?$/.test(t));
+    const unidade = i._un.find(t => /^[A-Za-zÀ-ú]/.test(t)) || i._qtd.find(t => /^[A-Za-zÀ-ú]{1,6}\d{0,2}$/.test(t)) || null;
+    return {
+      codigo: i.codigo,
+      descricao,
+      ncm: (i.ncm && i.ncm.slice(0, 8)) || (m ? m[1].replace(/\./g, '') : null),
+      unidade,
+      quantidade: qtd ? numeroBR(qtd) : null,
+    };
+  }).filter(i => i.descricao);
+}
+
+// Linha com o produto inteiro (DANFEs em que cada linha da tabela é um texto só)
 const LINHA_ITEM = /^\s*(\S{1,30})\s+(.{2,160}?)\s+(\d{8}|\d{4}\.\d{2}\.\d{2})\s+(\d{3,4})\s+([1-7]\d{3})\s+([A-Za-zÀ-ú]{1,6}\d{0,2})\s+(\d{1,3}(?:\.\d{3})*(?:,\d{1,4})?)(?=\s|$)/;
 
-// Melhor esforço: cada emissor monta o PDF de um jeito; se não reconhecer, devolve null
-function lerItensDANFE(texto) {
+function lerItensPorLinha(linhasTexto) {
   const itens = [];
-  for (const linha of texto.split('\n')) {
+  for (const linha of linhasTexto) {
     const m = LINHA_ITEM.exec(linha);
     if (!m) continue;
-    itens.push({
-      codigo: m[1],
-      descricao: m[2].trim(),
-      ncm: m[3].replace(/\./g, ''),
-      unidade: m[6],
-      quantidade: numeroBR(m[7]),
-    });
+    itens.push({ codigo: m[1], descricao: m[2].trim(), ncm: m[3].replace(/\./g, ''), unidade: m[6], quantidade: numeroBR(m[7]) });
+  }
+  return itens;
+}
+
+// Melhor esforço: cada emissor monta o PDF de um jeito; se não reconhecer, devolve null
+function lerItensDANFE(texto, paginas = []) {
+  let itens = paginas.length ? lerItensPorColunas(paginas) : [];
+  if (!itens.length) {
+    const linhas = paginas.length
+      ? paginas.flatMap(p => agruparLinhas(p).map(textoDaLinha))
+      : String(texto || '').split('\n');
+    itens = lerItensPorLinha(linhas);
   }
   return itens.length ? itens : null;
 }
 
-function lerTextoDANFE(texto) {
+function lerTextoDANFE(texto, paginas = []) {
   const t = texto.replace(/[ \t ]+/g, ' ');
-  const dados = { chave: chave.encontrarNoTexto(t), itens: lerItensDANFE(t) };
+  const dados = { chave: chave.encontrarNoTexto(t), itens: lerItensDANFE(t, paginas) };
 
   const emitente = /RECEBEMOS DE\s+(.{3,120}?)\s+OS PRODUTOS/i.exec(t);
   if (emitente) dados.emitente_nome = emitente[1].trim();
@@ -134,9 +284,9 @@ function lerTextoDANFE(texto) {
 
 async function lerPDF(buffer) {
   try {
-    const texto = await extrairTextoPDF(buffer);
+    const { texto, paginas } = await extrairPDF(buffer);
     if (texto.replace(/\s/g, '').length < 20) return { origem_dados: 'pdf_sem_texto' };
-    return { ...lerTextoDANFE(texto), texto_busca: textoBusca(texto), origem_dados: 'pdf_texto' };
+    return { ...lerTextoDANFE(texto, paginas), texto_busca: textoBusca(texto), origem_dados: 'pdf_texto' };
   } catch (err) {
     console.warn('⚠️  Falha ao ler PDF:', err.message);
     return { origem_dados: 'pdf_erro' };
@@ -174,3 +324,5 @@ async function analisar({ xmlBuffer, pdfBuffer, chaveDigitada, nomesArquivos = [
 }
 
 module.exports = { analisar, lerXML, lerPDF, lerTextoDANFE, lerItensDANFE, textoBusca };
+// uso interno (testes e diagnóstico)
+module.exports._interno = { extrairPDF, agruparLinhas, colunasDoCabecalho, textoDaLinha };

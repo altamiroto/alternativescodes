@@ -17,15 +17,15 @@ const imp = {
 
 // ─── O que vai na etiqueta (padrão: só a chave de acesso) ───
 const NOMES_CAMPOS = {
-  numero: 'nº e emissão', fornecedor: 'fornecedor', destinatario: 'destinatário', produtos: 'produtos',
+  fornecedor: 'fornecedor', destinatario: 'destinatário', produtos: 'produtos',
   valor: 'valor', protocolo: 'protocolo', observacao: 'observação',
 };
 
 function atualizarCampos() {
   imp.campos = $$('[data-campo]').filter(c => c.checked).map(c => c.dataset.campo);
   $('#resumo-campos').textContent = imp.campos.length
-    ? `chave + ${imp.campos.map(c => NOMES_CAMPOS[c]).join(', ')}`
-    : 'só a chave de acesso';
+    ? `chave, nº, emissão + ${imp.campos.map(c => NOMES_CAMPOS[c]).join(', ')}`
+    : 'chave, nº e emissão';
   try { localStorage.setItem('nf_campos', JSON.stringify(imp.campos)); } catch { /* sem armazenamento */ }
 }
 
@@ -189,6 +189,13 @@ function detalheNota(n, itens) {
     </div>`;
 }
 
+// "1 · nota completa" imprime o DANFE: o seletor do que vai na etiqueta não se aplica
+function mostrarModo() {
+  const completa = imp.layout === 1;
+  $('#campos-etiqueta').classList.toggle('oculto', completa);
+  $('#explica-completa').classList.toggle('oculto', !completa);
+}
+
 function atualizarResumo() {
   const qtd = imp.selecionadas.size;
   const folhas = Math.ceil(qtd / imp.layout);
@@ -226,6 +233,7 @@ $$('.tamanho').forEach(b => b.addEventListener('click', () => {
   $$('.tamanho').forEach(x => x.classList.toggle('ativo', x === b));
   imp.layout = Number(b.dataset.layout);
   try { localStorage.setItem('nf_layout', String(imp.layout)); } catch { /* sem armazenamento */ }
+  mostrarModo();
   atualizarResumo();
 }));
 
@@ -264,7 +272,19 @@ function receberNova() {
   const texto = ids.length > 1
     ? `✅ ${ids.length} notas adicionadas (${ids.map(fmt.registro).join(', ')}).`
     : `✅ Nota ${fmt.registro(ids[0])} adicionada. Adicione outra ou gere o PDF.`;
-  $('#adicionada').innerHTML = `<div class="aviso ok" style="margin-top:12px">${texto}</div>`
+  const consulta = q.get('consulta');
+  const MOTIVOS = {
+    data_fora_da_janela: 'a busca automática só encontra notas deste mês (ou do mês passado, até o dia 15)',
+    nao_encontrada: 'a SEFAZ não encontrou a nota por essa chave',
+    pendente: 'a nota ainda não foi autorizada na SEFAZ',
+    servico_indisponivel: 'o serviço de consulta está fora do ar agora',
+    limite: 'muitas consultas seguidas',
+    rede: 'sem conexão com o serviço de consulta',
+  };
+  const avisoConsulta = consulta === 'ok'
+    ? '<div class="aviso ok">📥 Nota completa encontrada pela chave: dados, produtos e DANFE (PDF) foram guardados.</div>'
+    : consulta ? `<div class="aviso atencao">ℹ️ Não deu para buscar a nota completa (${escapar(MOTIVOS[consulta] || 'falha na consulta')}). Os dados do que foi enviado foram guardados.</div>` : '';
+  $('#adicionada').innerHTML = `<div class="aviso ok" style="margin-top:12px">${texto}</div>${avisoConsulta}`
     + (repetidas.length ? `<div class="aviso atencao">Atenção: ${repetidas.length > 1 ? 'as notas' : 'a nota'} ${repetidas.map(fmt.registro).join(', ')} já tinha${repetidas.length > 1 ? 'm' : ''} sido registrada${repetidas.length > 1 ? 's' : ''} antes.</div>` : '');
   $('#adicionada').classList.remove('oculto');
 }
@@ -273,7 +293,7 @@ function receberNova() {
 (async () => {
   try {
     const salvo = Number(localStorage.getItem('nf_layout'));
-    if ([4, 8, 16].includes(salvo)) {
+    if ([1, 4, 8, 16].includes(salvo)) {
       imp.layout = salvo;
       $$('.tamanho').forEach(x => x.classList.toggle('ativo', Number(x.dataset.layout) === salvo));
     }
@@ -283,6 +303,7 @@ function receberNova() {
     $$('[data-campo]').forEach(c => { c.checked = Array.isArray(salvos) && salvos.includes(c.dataset.campo); });
   } catch { /* padrão: só a chave */ }
   atualizarCampos();
+  mostrarModo();
   try {
     const { usuario } = await api('/api/eu');
     if (usuario) {

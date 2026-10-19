@@ -1,8 +1,7 @@
 // Etiquetas em A4 (preto e branco), 4 / 8 / 16 por folha, com linhas de corte
 //
-// Por padrão a etiqueta traz só a CHAVE DE ACESSO (código de barras + números), o QR pequeno
+// Sempre: CHAVE DE ACESSO (código de barras + números), NF-e nº, série e emissão, o QR pequeno
 // do sistema e a frase de consulta. Os demais blocos são opcionais (escolhidos na impressão):
-//   numero      → NF-e nº, série, emissão e UF
 //   fornecedor  → emitente e CNPJ
 //   destinatario→ destinatário e CNPJ
 //   valor       → valor total da nota
@@ -16,6 +15,7 @@ const { formatarChave, formatarCNPJ } = require('./chave');
 const MM = 72 / 25.4;
 const A4 = { w: 210, h: 297 };
 const LAYOUTS = {
+  1: { cols: 1, rows: 1 }, // página inteira (reserva quando não há DANFE em PDF)
   4: { cols: 2, rows: 2 },
   8: { cols: 2, rows: 4 },
   16: { cols: 2, rows: 8 },
@@ -24,6 +24,11 @@ const CAMPOS = ['numero', 'fornecedor', 'destinatario', 'valor', 'protocolo', 'p
 
 // Medidas de cada tamanho de etiqueta (mm e pontos)
 const ESTILO = {
+  1: {
+    margem: 10, folga: 4, qr: 34, modulo: 0.4,
+    titulo: 16, normal: 11, rotulo: 7, chave: 12, item: 9.5, consulta: 8, reg: 7,
+    barras: 22, barrasSozinha: 40, barrasMin: 15, linhaBorda: 0.6,
+  },
   4: {
     margem: 5, folga: 2.5, qr: 24, modulo: 0.3,
     titulo: 12, normal: 8.5, rotulo: 5.5, chave: 9, item: 7.5, consulta: 6.5, reg: 5,
@@ -243,6 +248,7 @@ async function gerarPDF(notas, quantidadePorFolha = 4, campos = []) {
   const porFolha = layout.cols * layout.rows;
   const w = A4.w / layout.cols, h = A4.h / layout.rows;
   const selecionados = lerCampos(campos);
+  selecionados.add('numero'); // nº, série e emissão vão sempre, junto com a chave
 
   const imagens = await Promise.all(notas.map(async n => ({
     qr: await gerarQR(n.url),

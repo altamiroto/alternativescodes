@@ -29,3 +29,8 @@ for (const layout of [4, 8, 16]) {
     assert.strictEqual(pdf.subarray(0, 4).toString(), '%PDF');
   });
 }
+
+test('página inteira (1 por folha) com todos os dados', async () => {
+  const pdf = await gerarPDF([{ ...nota, itens: [{ quantidade: 1, unidade: 'UN', descricao: 'ITEM' }] }], 1, CAMPOS);
+  assert.strictEqual((pdf.toString('latin1').match(/\/Type \/Page\b/g) || []).length, 1);
+});

@@ -266,6 +266,7 @@ input.chave { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; 
   display: grid; grid-template-columns: 1fr 1fr; gap: 2px; padding: 3px; margin-bottom: 4px;
 }
 .folha i { display: block; border: 1px dashed #5c6670; border-radius: 1px; }
+.folha.g1 { grid-template-columns: 1fr; }
 .folha.g4 { grid-template-rows: repeat(2, 1fr); }
 .folha.g8 { grid-template-rows: repeat(4, 1fr); }
 .folha.g16 { grid-template-rows: repeat(8, 1fr); gap: 1px; }
@@ -287,7 +288,7 @@ input.chave { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; 
 .barra-imprimir #resumo-selecao { margin-top: 6px; font-weight: 600; }
 .tamanhos-compacto { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
 .tamanhos-compacto > span { flex: 1 0 100%; }
-.tamanhos-compacto .tamanho { flex: 1; flex-direction: row; justify-content: center; gap: 6px; padding: 6px; font-weight: 700; font-size: 16px; }
+.tamanhos-compacto .tamanho { flex: 1 1 40%; flex-direction: row; justify-content: center; gap: 6px; padding: 6px; font-weight: 700; font-size: 16px; }
 .tamanhos-compacto .tamanho small { font-weight: 400; }
 .tamanhos-compacto .folha { width: 20px; margin: 0; padding: 1.5px; gap: 1px; border-width: 1px; }
 .tamanhos-compacto .folha i { border-width: 0; background: #9aa4ae; }

@@ -252,7 +252,7 @@ async function abrirNota(id) {
       <h2>Etiqueta</h2>
       <div class="linha">
         <select id="det-layout" style="width:auto;min-height:40px;padding:6px 10px">
-          <option value="4">4 por folha</option><option value="8">8 por folha</option><option value="16">16 por folha</option>
+          <option value="1">1 por folha (nota completa)</option><option value="4" selected>4 por folha</option><option value="8">8 por folha</option><option value="16">16 por folha</option>
         </select>
         <button class="btn pequeno discreto" type="button" id="det-etiqueta">🖨️ Gerar etiqueta desta nota</button>
       </div>
@@ -299,7 +299,10 @@ async function abrirNota(id) {
   };
   $('#det-reprocessar').onclick = async () => {
     const res = await adm(`/api/admin/notas/${id}/reprocessar`, { method: 'POST' });
-    aviso(res.preenchidos.length ? `Preenchido: ${res.preenchidos.join(', ')}` : 'Nada novo encontrado no arquivo.', 4000);
+    const c = res.consulta || {};
+    const msg = c.status === 'completa' ? 'Nota completa encontrada pela chave (XML e DANFE guardados).'
+      : c.status === 'falhou' ? `Consulta pela chave: ${c.mensagem}` : '';
+    aviso([msg, res.preenchidos.length ? `Preenchido: ${res.preenchidos.join(', ')}` : (msg ? '' : 'Nada novo encontrado no arquivo.')].filter(Boolean).join(' '), 6000);
     recarregar();
   };
   $('#det-etiqueta').onclick = () => { gerarEtiquetas([id], Number($('#det-layout').value), true); setTimeout(recarregar, 1500); };
