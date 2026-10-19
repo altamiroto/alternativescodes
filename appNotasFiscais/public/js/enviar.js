@@ -268,10 +268,13 @@ $('#btn-enviar').addEventListener('click', async () => {
 function irParaImpressao(r) {
   const nota = r.notas[0];
   const params = new URLSearchParams({ nova: nota.id });
-  if (nota.registros_anteriores?.length) params.set('repetida', nota.id);
-  // resultado da Consulta DANFE (busca da nota completa pela chave)
+  // registros anteriores com a mesma chave (para avisar que pode ser repetida)
+  if (nota.registros_anteriores?.length) params.set('repetida', nota.registros_anteriores.map(a => a.id).join(','));
+  // resultado da Consulta DANFE (busca da nota completa pela chave). A falha só importa
+  // quando o que foi enviado não trouxe os dados (ex.: só a chave, ou PDF escaneado).
+  const incompleta = !nota.nota?.itens?.length || !nota.nota?.emitente_nome;
   if (nota.consulta?.status === 'completa') params.set('consulta', 'ok');
-  else if (nota.consulta?.status === 'falhou') params.set('consulta', nota.consulta.codigo || 'falhou');
+  else if (nota.consulta?.status === 'falhou' && incompleta) params.set('consulta', nota.consulta.codigo || 'falhou');
   location.href = `/?${params}`;
 }
 

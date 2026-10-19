@@ -52,8 +52,10 @@ async function carregar() {
   imp.notas = r.notas;
   imp.lote = r.lote;
   if (r.todas) $('#titulo-lista').textContent = 'Notas de todos (administrador)';
-  // notas da lista entram marcadas (menos as que a pessoa desmarcou)
-  if (imp.filtro === 'lote') r.notas.forEach(n => { if (!imp.desmarcadas.has(n.id)) imp.selecionadas.add(n.id); });
+  // notas da lista que ainda não foram impressas entram marcadas (menos as que a pessoa desmarcou)
+  if (imp.filtro === 'lote') {
+    r.notas.forEach(n => { if (!n.etiqueta_impressa_em && !imp.desmarcadas.has(n.id)) imp.selecionadas.add(n.id); });
+  }
   mostrarTela();
 }
 
@@ -95,8 +97,8 @@ function desenhar() {
   $('#busca').classList.toggle('oculto', lote);
   $('#explica-filtro').innerHTML = lote
     ? (imp.lote.impresso
-      ? '<span class="aviso ok" style="display:block;margin:0">✅ <b>Esta lista já foi impressa.</b> Pode gerar o PDF de novo, se precisar. Ao adicionar uma nota nova, começa uma lista nova.</span>'
-      : 'As notas que você adicionou agora. Elas continuam aqui depois de imprimir.')
+      ? '<span class="aviso ok" style="display:block;margin:0">✅ <b>Etiquetas impressas.</b> As notas continuam aqui. Se precisar, marque e gere o PDF de novo. As notas que você adicionar entram nesta mesma lista.</span>'
+      : 'As notas que você adicionou. Elas continuam aqui depois de imprimir, até você tocar em <b>🧹 Começar lista nova</b>.')
     : 'Todas as suas outras notas. <b>Marque só as que quiser imprimir.</b>';
   $('#lista-nova').classList.toggle('oculto', !lote || !imp.notas.length);
 
@@ -144,7 +146,7 @@ function itemNota(n, lote) {
           ${resumo ? `<span class="resumo">${resumo}</span>` : ''}
           ${itens.length ? `<span class="produtos">📦 ${escapar(itens.slice(0, 3).map(i => i.descricao).join(' · '))}${itens.length > 3 ? ` <i>+${itens.length - 3}</i>` : ''}</span>` : ''}
           <small>Registrada em ${fmt.data(n.created_at)}${n.criado_por_nome ? ` por ${escapar(n.criado_por_nome)}` : ''}
-            ${lote ? '' : n.etiqueta_impressa_em ? ` · <span class="selo ok">impressa ${fmt.data(n.etiqueta_impressa_em)}</span>` : ' · <span class="selo atencao">não impressa</span>'}</small>
+            ${n.etiqueta_impressa_em ? ` · <span class="selo ok">impressa ${fmt.data(n.etiqueta_impressa_em)}</span>` : lote ? '' : ' · <span class="selo atencao">não impressa</span>'}</small>
         </span>
         <span class="reg">${fmt.registro(n.id)}</span>
       </label>
@@ -283,9 +285,9 @@ function receberNova() {
   };
   const avisoConsulta = consulta === 'ok'
     ? '<div class="aviso ok">📥 Nota completa encontrada pela chave: dados, produtos e DANFE (PDF) foram guardados.</div>'
-    : consulta ? `<div class="aviso atencao">ℹ️ Não deu para buscar a nota completa (${escapar(MOTIVOS[consulta] || 'falha na consulta')}). Os dados do que foi enviado foram guardados.</div>` : '';
+    : consulta ? `<div class="aviso atencao">ℹ️ Não deu para buscar a nota completa (${escapar(MOTIVOS[consulta] || 'falha na consulta')}). A nota foi guardada; para ter fornecedor e produtos, adicione também o PDF ou o XML dela.</div>` : '';
   $('#adicionada').innerHTML = `<div class="aviso ok" style="margin-top:12px">${texto}</div>${avisoConsulta}`
-    + (repetidas.length ? `<div class="aviso atencao">Atenção: ${repetidas.length > 1 ? 'as notas' : 'a nota'} ${repetidas.map(fmt.registro).join(', ')} já tinha${repetidas.length > 1 ? 'm' : ''} sido registrada${repetidas.length > 1 ? 's' : ''} antes.</div>` : '');
+    + (repetidas.length ? `<div class="aviso atencao">⚠️ Esta nota fiscal já tinha sido registrada antes (${repetidas.map(fmt.registro).join(', ')}). Confira se não é repetida.</div>` : '');
   $('#adicionada').classList.remove('oculto');
 }
 

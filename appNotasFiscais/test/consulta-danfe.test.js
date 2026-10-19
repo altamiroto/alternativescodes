@@ -49,6 +49,20 @@ test('consulta DANFE: sucesso, erro com X-Error-Code, nova tentativa em 503 e DA
   const pdf = await c.gerarDanfe(XML);
   assert.strictEqual(pdf.subarray(0, 5).toString(), '%PDF-');
 
-  assert.strictEqual(c.podeConsultar('35261012345678000190550010001234561000000016'), true);
-  assert.strictEqual(c.podeConsultar('35261012345678000190650010001234561000000016'), false); // NFC-e
+  const outubro = new Date('2026-10-20T12:00:00-03:00');
+  assert.strictEqual(c.podeConsultar('35261012345678000190550010001234561000000016', outubro), true);
+  assert.strictEqual(c.podeConsultar('35261012345678000190650010001234561000000016', outubro), false); // NFC-e
+});
+
+test('janela de datas da consulta pela chave (AAMM da chave)', () => {
+  const c = require('../src/consultaDanfe');
+  const chave = aamm => `35${aamm}12345678000190550010001234561000000016`;
+  const dia = (d) => new Date(`${d}T12:00:00-03:00`);
+  assert.strictEqual(c.dentroDaJanela(chave('2610'), dia('2026-10-19')), true);   // mês corrente
+  assert.strictEqual(c.dentroDaJanela(chave('2609'), dia('2026-10-10')), true);   // mês anterior até o dia 15
+  assert.strictEqual(c.dentroDaJanela(chave('2609'), dia('2026-10-19')), false);  // depois do dia 15
+  assert.strictEqual(c.dentroDaJanela(chave('2607'), dia('2026-10-19')), false);  // antiga
+  assert.strictEqual(c.dentroDaJanela(chave('2612'), dia('2027-01-05')), true);   // virada do ano
+  // meia-noite UTC ainda é o dia anterior em Brasília
+  assert.strictEqual(c.dentroDaJanela(chave('2610'), new Date('2026-11-01T02:00:00Z')), true);
 });

@@ -88,7 +88,28 @@ async function gerarDanfe(xmlBuffer) {
   return pdf;
 }
 
-// Só NF-e (modelo 55) pode ser consultada pela chave
-const podeConsultar = chave => ativa() && /^[0-9A-Z]{44}$/.test(chave || '') && chave.slice(20, 22) === '55';
+// Ano/mês de hoje no fuso de Brasília
+function hojeBrasil(agora = new Date()) {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(agora).map(x => [x.type, x.value]));
+  return { ano: Number(p.year), mes: Number(p.month), dia: Number(p.day) };
+}
 
-module.exports = { consultarChave, gerarDanfe, podeConsultar, ativa, ErroConsulta };
+// A consulta pela chave só busca notas emitidas no mês corrente, ou no mês anterior até o dia 15.
+// Conferimos aqui (a chave traz AAMM da emissão) para não gastar requisições que vão falhar.
+function dentroDaJanela(chave, agora = new Date()) {
+  const aamm = /^\d{2}(\d{2})(\d{2})/.exec(chave || '');
+  if (!aamm) return false;
+  const emissao = 2000 + Number(aamm[1]), mesEmissao = Number(aamm[2]);
+  const { ano, mes, dia } = hojeBrasil(agora);
+  if (emissao === ano && mesEmissao === mes) return true;
+  const anterior = mes === 1 ? { ano: ano - 1, mes: 12 } : { ano, mes: mes - 1 };
+  return dia <= 15 && emissao === anterior.ano && mesEmissao === anterior.mes;
+}
+
+// Só NF-e (modelo 55) pode ser consultada pela chave
+const eChaveNFe = chave => /^[0-9A-Z]{44}$/.test(chave || '') && chave.slice(20, 22) === '55';
+const podeConsultar = (chave, agora) => ativa() && eChaveNFe(chave) && dentroDaJanela(chave, agora);
+
+module.exports = { consultarChave, gerarDanfe, podeConsultar, eChaveNFe, dentroDaJanela, ativa, ErroConsulta, MENSAGENS };
