@@ -12,7 +12,24 @@ const imp = {
   selecionadas: new Set(),
   desmarcadas: new Set(), // notas da lista que a pessoa desmarcou de propósito
   abertas: new Set(),     // notas com "Ver detalhes" aberto
+  campos: [],             // blocos extras da etiqueta (vazio = só a chave)
 };
+
+// ─── O que vai na etiqueta (padrão: só a chave de acesso) ───
+const NOMES_CAMPOS = {
+  numero: 'nº e emissão', fornecedor: 'fornecedor', destinatario: 'destinatário', produtos: 'produtos',
+  valor: 'valor', protocolo: 'protocolo', observacao: 'observação',
+};
+
+function atualizarCampos() {
+  imp.campos = $$('[data-campo]').filter(c => c.checked).map(c => c.dataset.campo);
+  $('#resumo-campos').textContent = imp.campos.length
+    ? `chave + ${imp.campos.map(c => NOMES_CAMPOS[c]).join(', ')}`
+    : 'só a chave de acesso';
+  try { localStorage.setItem('nf_campos', JSON.stringify(imp.campos)); } catch { /* sem armazenamento */ }
+}
+
+$$('[data-campo]').forEach(c => c.addEventListener('change', atualizarCampos));
 
 async function carregar() {
   const params = new URLSearchParams();
@@ -215,7 +232,7 @@ $$('.tamanho').forEach(b => b.addEventListener('click', () => {
 $('#btn-gerar').addEventListener('click', () => {
   const ids = [...imp.selecionadas].sort((a, b) => a - b);
   if (!ids.length) return;
-  const params = new URLSearchParams({ ids: ids.join(','), layout: imp.layout });
+  const params = new URLSearchParams({ ids: ids.join(','), layout: imp.layout, campos: imp.campos.join(',') });
   // Abre direto (síncrono ao toque) para o navegador não bloquear a nova aba
   const aba = window.open(`/api/impressao/etiquetas.pdf?${params}`, '_blank');
   if (!aba) location.href = `/api/impressao/etiquetas.pdf?${params}`;
@@ -261,6 +278,11 @@ function receberNova() {
       $$('.tamanho').forEach(x => x.classList.toggle('ativo', Number(x.dataset.layout) === salvo));
     }
   } catch { /* padrão: 4 */ }
+  try {
+    const salvos = JSON.parse(localStorage.getItem('nf_campos') || '[]');
+    $$('[data-campo]').forEach(c => { c.checked = Array.isArray(salvos) && salvos.includes(c.dataset.campo); });
+  } catch { /* padrão: só a chave */ }
+  atualizarCampos();
   try {
     const { usuario } = await api('/api/eu');
     if (usuario) {

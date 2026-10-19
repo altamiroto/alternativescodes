@@ -486,7 +486,8 @@ async function responderEtiquetas(req, res, quem) {
      WHERE n.id = ANY($1::int[]) AND n.deleted_at IS NULL AND ($2::int IS NULL OR n.criado_por = $2)
      ORDER BY n.id`, [ids, quem.usuarioId]);
   if (!rows.length) return erro(res, 404, 'Nenhuma nota encontrada.');
-  const pdf = await etiquetas.gerarPDF(rows.map(n => ({ ...n, url: linkNota(req, n.slug) })), layout);
+  // campos=numero,fornecedor,... → blocos opcionais da etiqueta (vazio = só a chave de acesso)
+  const pdf = await etiquetas.gerarPDF(rows.map(n => ({ ...n, url: linkNota(req, n.slug) })), layout, req.query.campos);
   if (req.query.marcar !== '0') {
     await db.query('UPDATE notas SET etiqueta_impressa_em = NOW() WHERE id = ANY($1::int[])', [rows.map(n => n.id)]);
   }
