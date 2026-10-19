@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { gerarPDF } = require('../src/etiquetas');
+const { gerarPDF, lerCampos, CAMPOS } = require('../src/etiquetas');
 
 const nota = {
   id: 42, slug: '7KQ2M9XAB3', url: 'https://exemplo.duckdns.org/n/7KQ2M9XAB3', created_at: new Date(),
@@ -14,5 +14,18 @@ for (const layout of [4, 8, 16]) {
     const pdf = await gerarPDF(notas, layout);
     assert.strictEqual(pdf.subarray(0, 4).toString(), '%PDF');
     assert.strictEqual((pdf.toString('latin1').match(/\/Type \/Page\b/g) || []).length, 2); // passou para a 2ª folha
+  });
+}
+
+test('campos da etiqueta: padrão só a chave, aceita lista ou texto e ignora desconhecidos', () => {
+  assert.deepStrictEqual([...lerCampos(undefined)], []);
+  assert.deepStrictEqual([...lerCampos('valor,produtos,xyz')], ['valor', 'produtos']);
+  assert.deepStrictEqual([...lerCampos(['numero'])], ['numero']);
+});
+
+for (const layout of [4, 8, 16]) {
+  test(`gera PDF com todos os campos opcionais (${layout} por folha)`, async () => {
+    const pdf = await gerarPDF([{ ...nota, itens: [{ quantidade: 2, unidade: 'UN', descricao: 'BROCA 6MM' }], comentario: 'ok' }], layout, CAMPOS);
+    assert.strictEqual(pdf.subarray(0, 4).toString(), '%PDF');
   });
 }

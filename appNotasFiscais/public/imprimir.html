@@ -68,6 +68,20 @@
           <button type="button" class="tamanho" data-layout="8"><span class="folha g8"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>8 <small>médias</small></button>
           <button type="button" class="tamanho" data-layout="16"><span class="folha g16"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>16 <small>pequenas</small></button>
         </div>
+        <details class="campos-etiqueta" id="campos-etiqueta">
+          <summary>📝 Na etiqueta: <b id="resumo-campos">só a chave de acesso</b></summary>
+          <div class="campos-lista">
+            <label class="campo fixo"><input type="checkbox" checked disabled> Chave de acesso + código de barras <small>(sempre)</small></label>
+            <label class="campo"><input type="checkbox" data-campo="numero"> Nº, série e emissão</label>
+            <label class="campo"><input type="checkbox" data-campo="fornecedor"> Fornecedor e CNPJ</label>
+            <label class="campo"><input type="checkbox" data-campo="destinatario"> Destinatário</label>
+            <label class="campo"><input type="checkbox" data-campo="produtos"> Produtos</label>
+            <label class="campo"><input type="checkbox" data-campo="valor"> Valor total</label>
+            <label class="campo"><input type="checkbox" data-campo="protocolo"> Protocolo de autorização</label>
+            <label class="campo"><input type="checkbox" data-campo="observacao"> Observação (comentário)</label>
+            <p class="suave pequeno" style="margin:6px 0 0">Nas etiquetas menores (8 e 16 por folha), o que não couber fica de fora. A chave sempre aparece.</p>
+          </div>
+        </details>
         <button class="btn primario grande" type="button" id="btn-gerar" disabled>🖨️ Gerar PDF</button>
         <div id="resumo-selecao" class="suave pequeno centro">Nenhuma nota marcada</div>
       </div>

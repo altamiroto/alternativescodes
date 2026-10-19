@@ -1,4 +1,14 @@
 // Etiquetas em A4 (preto e branco), 4 / 8 / 16 por folha, com linhas de corte
+//
+// Por padrão a etiqueta traz só a CHAVE DE ACESSO (código de barras + números), o QR pequeno
+// do sistema e a frase de consulta. Os demais blocos são opcionais (escolhidos na impressão):
+//   numero      → NF-e nº, série, emissão e UF
+//   fornecedor  → emitente e CNPJ
+//   destinatario→ destinatário e CNPJ
+//   valor       → valor total da nota
+//   protocolo   → protocolo de autorização
+//   produtos    → lista de produtos (quantidade e descrição)
+//   observacao  → comentário de quem registrou
 const PDFDocument = require('pdfkit');
 const bwipjs = require('bwip-js');
 const { formatarChave, formatarCNPJ } = require('./chave');
@@ -10,14 +20,44 @@ const LAYOUTS = {
   8: { cols: 2, rows: 4 },
   16: { cols: 2, rows: 8 },
 };
-const MODULO_BARRAS_MM = 0.3; // largura de cada barra fina do Code 128 impresso (padrão)
+const CAMPOS = ['numero', 'fornecedor', 'destinatario', 'valor', 'protocolo', 'produtos', 'observacao'];
+
+// Medidas de cada tamanho de etiqueta (mm e pontos)
+const ESTILO = {
+  4: {
+    margem: 5, folga: 2.5, qr: 24, modulo: 0.3,
+    titulo: 12, normal: 8.5, rotulo: 5.5, chave: 9, item: 7.5, consulta: 6.5, reg: 5,
+    barras: 20, barrasSozinha: 30, barrasMin: 12, linhaBorda: 0.5,
+  },
+  8: {
+    margem: 3.5, folga: 2, qr: 18, modulo: 0.3,
+    titulo: 10, normal: 7.5, rotulo: 5, chave: 8, item: 6.5, consulta: 5.5, reg: 5,
+    barras: 10, barrasSozinha: 17, barrasMin: 8, linhaBorda: 0.4,
+  },
+  16: {
+    margem: 2.5, folga: 1.8, qr: 14, modulo: 0.25,
+    titulo: 8.5, normal: 6.5, rotulo: 4.5, chave: 6.3, item: 6, consulta: 0, reg: 5,
+    barras: 7.5, barrasSozinha: 11, barrasMin: 6, linhaBorda: 0.35,
+  },
+};
 
 // ─── Formatação ──────────────────────────────────────
 const dataBR = iso => (iso ? String(iso).slice(0, 10).split('-').reverse().join('/') : '');
 const registro = id => `#${String(id).padStart(4, '0')}`;
+const urlSemProtocolo = url => url.replace(/^https?:\/\//, '');
+const moeda = v => Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+const tipoDoc = n => (n.modelo === '65' ? 'NFC-e' : n.chave ? 'NF-e' : 'NF');
+const numeroSerie = n => (n.numero ? `${tipoDoc(n)} Nº ${String(n.numero).padStart(9, '0').replace(/(\d{3})(?=\d)/g, '$1.')}` : 'Nota fiscal');
+const docPessoa = d => (d && d.length === 14 ? `CNPJ ${formatarCNPJ(d)}` : d && d.length === 11 ? `CPF ${d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}` : d || '');
+const qtdBR = q => (q == null ? '' : Number(q).toLocaleString('pt-BR', { maximumFractionDigits: 3 }));
+const linhaItem = i => `${[qtdBR(i.quantidade), i.unidade].filter(Boolean).join(' ')}  ${i.descricao || ''}`.trim();
+const itensDe = n => (Array.isArray(n.itens) ? n.itens.filter(i => i && i.descricao) : []);
+const CONSULTA = 'Consulte a autenticidade em www.nfe.fazenda.gov.br/portal com a chave de acesso.';
 
-function urlSemProtocolo(url) {
-  return url.replace(/^https?:\/\//, '');
+// Aceita "numero,produtos" ou ['numero', 'produtos']; ignora o que não existe
+function lerCampos(valor) {
+  const lista = Array.isArray(valor) ? valor : String(valor || '').split(',');
+  return new Set(lista.map(c => String(c).trim()).filter(c => CAMPOS.includes(c)));
 }
 
 // ─── Imagens (QR e código de barras) ─────────────────
@@ -32,12 +72,9 @@ async function gerarBarras(chave) {
   return { png, modulos: largura / escala };
 }
 
-// ─── Desenho ─────────────────────────────────────────
-// Estilo etiqueta de transportadora: dados da NF-e em destaque, em caixas (sem o valor:
-// quem precisar abre o PDF ou consulta pela chave);
-// o QR do sistema fica pequeno, no canto, sem chamar atenção.
+// ─── Primitivas de desenho (documento em mm, fontes em pontos) ─
 function texto(doc, str, x, y, largura, { tamanho = 9, fonte = 'Helvetica', alinhar = 'left' } = {}) {
-  doc.font(fonte).fontSize(tamanho / MM); // tamanho em pontos; o documento está em mm
+  doc.font(fonte).fontSize(tamanho / MM);
   let s = String(str || '');
   if (doc.widthOfString(s) > largura) {
     while (s.length > 1 && doc.widthOfString(s + '…') > largura) s = s.slice(0, -1);
@@ -46,188 +83,148 @@ function texto(doc, str, x, y, largura, { tamanho = 9, fonte = 'Helvetica', alin
   doc.text(s, x, y, { width: largura, align: alinhar, lineBreak: false });
 }
 
-// Texto em várias linhas, cortado com "…" se passar da altura
+// Texto em várias linhas, cortado com "…" se passar da altura; devolve a altura usada
 function paragrafo(doc, str, x, y, largura, altura, tamanho, fonte = 'Helvetica') {
-  if (!str) return;
+  if (!str || altura <= 0) return 0;
+  const s = String(str).replace(/\s+/g, ' ').trim();
   doc.font(fonte).fontSize(tamanho / MM);
-  doc.text(String(str).replace(/\s+/g, ' ').trim(), x, y, { width: largura, height: altura, ellipsis: true });
+  const usada = Math.min(altura, doc.heightOfString(s, { width: largura }));
+  doc.text(s, x, y, { width: largura, height: altura, ellipsis: true });
+  return usada;
 }
 
-const rotulo = (doc, str, x, y, largura) => texto(doc, str.toUpperCase(), x, y, largura, { tamanho: 5.5, fonte: 'Helvetica-Bold' });
+const alturaLinha = pt => pt * 0.42; // mm por linha de texto
 const linhaH = (doc, x, y, w) => doc.moveTo(x, y).lineTo(x + w, y).lineWidth(0.25).stroke('#000');
 
-function desenharBarras(doc, barras, x, y, larguraMax, altura, modulo = MODULO_BARRAS_MM) {
+function desenharBarras(doc, barras, x, y, larguraMax, altura, modulo) {
   const largura = Math.min(barras.modulos * modulo, larguraMax);
   doc.image(barras.png, x + (larguraMax - largura) / 2, y, { width: largura, height: altura });
 }
 
-const tipoDoc = n => (n.modelo === '65' ? 'NFC-e' : n.chave ? 'NF-e' : 'NF');
-const numeroSerie = n => (n.numero ? `${tipoDoc(n)} Nº ${String(n.numero).padStart(9, '0').replace(/(\d{3})(?=\d)/g, '$1.')}` : 'Nota fiscal');
-const docPessoa = d => (d && d.length === 14 ? `CNPJ ${formatarCNPJ(d)}` : d && d.length === 11 ? `CPF ${d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}` : d || '');
-// "2 UN  PARAFUSADEIRA ELÉTRICA 12V" (sem valores, de propósito)
-const qtdBR = q => (q == null ? '' : Number(q).toLocaleString('pt-BR', { maximumFractionDigits: 3 }));
-const linhaItem = i => `${[qtdBR(i.quantidade), i.unidade].filter(Boolean).join(' ')}  ${i.descricao || ''}`.trim();
-const itensDe = n => (Array.isArray(n.itens) ? n.itens.filter(i => i && i.descricao) : []);
+// ─── Etiqueta ────────────────────────────────────────
+// Os blocos são desenhados de cima para baixo; um bloco que não cabe é deixado de fora.
+// Embaixo à direita fica o QR do sistema; o conteúdo que desce até a altura do QR estreita.
+function desenharEtiqueta(doc, n, img, x, y, w, h, tamanho, campos) {
+  const e = ESTILO[tamanho];
+  const X = x + e.margem, L = w - 2 * e.margem;
+  const I = X + e.folga, IL = L - 2 * e.folga;
+  const topo = y + e.margem;
+  const base = y + h - e.margem - e.folga;          // limite de baixo do conteúdo
+  const inicioQR = base - e.qr;
+  const rodapeTexto = e.consulta ? 7.5 : 2.6;       // consulta + nº do registro, à esquerda do QR
+  const limite = base - rodapeTexto - 0.5;           // conteúdo não passa daqui
+  const largura = (yTopo, altura) => (yTopo + altura > inicioQR - 0.8 ? IL - e.qr - 2.5 : IL);
+  let Y = topo + e.folga;
 
-// Lista de produtos em linhas, até caber; o que sobrar vira "+ N itens"
-function listaItens(doc, itens, x, y, largura, alturaMax, tamanho) {
-  const passo = tamanho * 0.42; // altura da linha em mm
-  const cabem = Math.max(1, Math.floor(alturaMax / passo));
-  const mostrar = itens.length > cabem ? itens.slice(0, cabem - 1) : itens;
-  mostrar.forEach((i, k) => texto(doc, linhaItem(i), x, y + k * passo, largura, { tamanho }));
-  if (mostrar.length < itens.length) {
-    texto(doc, `+ ${itens.length - mostrar.length} ${itens.length - mostrar.length > 1 ? 'itens' : 'item'} (ver nota completa pelo QR)`,
-      x, y + mostrar.length * passo, largura, { tamanho, fonte: 'Helvetica-Oblique' });
-    return (mostrar.length + 1) * passo;
-  }
-  return mostrar.length * passo;
-}
+  // A chave é obrigatória: os blocos de cima só entram se ainda sobrar espaço para ela
+  const reservaChave = n.chave
+    ? alturaLinha(e.rotulo) + 0.6 + e.barrasMin + 1 + 2 * alturaLinha(e.chave) + 1
+    : alturaLinha(e.rotulo) + alturaLinha(e.normal) + 1.5;
+  const cabeAntes = altura => Y + altura + reservaChave <= limite;
+  const cabe = altura => Y + altura <= limite;
+  const separador = () => { linhaH(doc, X, Y, L); Y += 1.6; };
+  const rot = str => { texto(doc, str.toUpperCase(), I, Y, largura(Y, 2.4), { tamanho: e.rotulo, fonte: 'Helvetica-Bold' }); Y += alturaLinha(e.rotulo) + 0.6; };
 
-const CONSULTA = 'Consulte a autenticidade em www.nfe.fazenda.gov.br/portal com a chave de acesso.';
-
-// Rodapé discreto do sistema: QR pequeno + nº do registro + link em letra miúda
-function marcaSistema(doc, n, img, x, y, w, h, qr) {
-  doc.image(img.qr, x + w - qr, y + h - qr, { width: qr, height: qr });
-  texto(doc, `Reg. ${registro(n.id)} · ${urlSemProtocolo(n.url)}`, x, y + h - 2.2, w - qr - 2, { tamanho: 5 });
-}
-
-// Etiqueta grande: 105 × 148,5 mm
-function etiqueta4(doc, n, img, x, y, w, h) {
-  const m = 5, X = x + m, L = w - 2 * m, p = 2.5, I = X + p, IL = L - 2 * p;
-  const topo = y + m;
-  let Y = topo + p;
-
-  texto(doc, numeroSerie(n), I, Y, IL * 0.62, { tamanho: 12, fonte: 'Helvetica-Bold' });
-  texto(doc, n.serie ? `Série ${n.serie}` : '', I + IL * 0.62, Y + 0.6, IL * 0.38, { tamanho: 10, fonte: 'Helvetica-Bold', alinhar: 'right' });
-  Y += 5.5;
-  texto(doc, [n.data_emissao ? `Emissão ${dataBR(n.data_emissao)}` : '', n.uf ? `UF ${n.uf}` : ''].filter(Boolean).join('   '), I, Y, IL, { tamanho: 8 });
-  Y += 4.5; linhaH(doc, X, Y, L); Y += 1.8;
-
-  rotulo(doc, 'Emitente', I, Y, IL); Y += 2.6;
-  paragrafo(doc, n.emitente_nome || 'Não identificado', I, Y, IL, 8, 9.5, 'Helvetica-Bold');
-  Y += doc.heightOfString(String(n.emitente_nome || 'x'), { width: IL }) > 4.5 ? 8 : 4.2;
-  texto(doc, docPessoa(n.emitente_cnpj), I, Y, IL, { tamanho: 8.5 });
-  Y += 4.5; linhaH(doc, X, Y, L); Y += 1.8;
-
-  if (n.destinatario_nome || n.destinatario_cnpj) {
-    rotulo(doc, 'Destinatário', I, Y, IL); Y += 2.6;
-    texto(doc, n.destinatario_nome, I, Y, IL, { tamanho: 8.5, fonte: 'Helvetica-Bold' }); Y += 3.8;
-    texto(doc, docPessoa(n.destinatario_cnpj), I, Y, IL, { tamanho: 8 });
-    Y += 4.3; linhaH(doc, X, Y, L); Y += 1.8;
+  // 1) Nº, série e emissão
+  if (campos.has('numero') && cabeAntes(alturaLinha(e.titulo) + alturaLinha(e.normal) + 2)) {
+    const lin = largura(Y, 6);
+    texto(doc, numeroSerie(n), I, Y, lin * 0.64, { tamanho: e.titulo, fonte: 'Helvetica-Bold' });
+    texto(doc, n.serie ? `Série ${n.serie}` : '', I + lin * 0.64, Y + 0.4, lin * 0.36, { tamanho: e.titulo - 2, fonte: 'Helvetica-Bold', alinhar: 'right' });
+    Y += alturaLinha(e.titulo) + 0.8;
+    const sub = [n.data_emissao ? `Emissão ${dataBR(n.data_emissao)}` : '', n.uf ? `UF ${n.uf}` : ''].filter(Boolean).join('   ');
+    if (sub) { texto(doc, sub, I, Y, largura(Y, 3), { tamanho: e.normal }); Y += alturaLinha(e.normal) + 0.6; }
+    separador();
   }
 
+  // 2) Fornecedor
+  if (campos.has('fornecedor') && (n.emitente_nome || n.emitente_cnpj) && cabeAntes(alturaLinha(e.rotulo) + 2 * alturaLinha(e.normal) + 3)) {
+    rot('Emitente');
+    if (n.emitente_nome) {
+      const usada = paragrafo(doc, n.emitente_nome, I, Y, largura(Y, 8), Math.min(alturaLinha(e.normal + 1) * 2 + 0.3, limite - Y), e.normal + 1, 'Helvetica-Bold');
+      Y += usada + 0.3;
+    }
+    if (n.emitente_cnpj) { texto(doc, docPessoa(n.emitente_cnpj), I, Y, largura(Y, 3), { tamanho: e.normal }); Y += alturaLinha(e.normal) + 0.6; }
+    separador();
+  }
+
+  // 3) Destinatário
+  if (campos.has('destinatario') && (n.destinatario_nome || n.destinatario_cnpj) && cabeAntes(alturaLinha(e.rotulo) + 2 * alturaLinha(e.normal) + 3)) {
+    rot('Destinatário');
+    if (n.destinatario_nome) { texto(doc, n.destinatario_nome, I, Y, largura(Y, 3), { tamanho: e.normal, fonte: 'Helvetica-Bold' }); Y += alturaLinha(e.normal) + 0.4; }
+    if (n.destinatario_cnpj) { texto(doc, docPessoa(n.destinatario_cnpj), I, Y, largura(Y, 3), { tamanho: e.normal }); Y += alturaLinha(e.normal) + 0.6; }
+    separador();
+  }
+
+  // 4) Valor
+  if (campos.has('valor') && n.valor_total != null && cabeAntes(alturaLinha(e.titulo) + 2.5)) {
+    const lin = largura(Y, 5);
+    texto(doc, 'VALOR TOTAL DA NOTA', I, Y + 1, lin / 2, { tamanho: e.rotulo, fonte: 'Helvetica-Bold' });
+    texto(doc, moeda(n.valor_total), I + lin / 2, Y, lin / 2, { tamanho: e.titulo, fonte: 'Helvetica-Bold', alinhar: 'right' });
+    Y += alturaLinha(e.titulo) + 1;
+    separador();
+  }
+
+  // 5) Chave de acesso (sempre). Sozinha, fica maior.
+  const extras = [...campos].some(c => c !== 'observacao' || n.comentario);
+  if (n.chave) {
+    const espacoChave = alturaLinha(e.chave) + 1;
+    const disponivel = limite - Y - alturaLinha(e.rotulo) - 0.6 - espacoChave - 1;
+    const alturaBarras = Math.max(5, Math.min(extras ? e.barras : e.barrasSozinha, disponivel));
+    rot('Chave de acesso');
+    const larguraBarras = largura(Y, alturaBarras + espacoChave);
+    desenharBarras(doc, img.barras, I, Y, larguraBarras, alturaBarras, e.modulo);
+    Y += alturaBarras + 1;
+    const grupos = formatarChave(n.chave);
+    doc.font('Helvetica-Bold').fontSize(e.chave / MM);
+    if (doc.widthOfString(grupos) <= larguraBarras) {
+      texto(doc, grupos, I, Y, larguraBarras, { tamanho: e.chave, fonte: 'Helvetica-Bold', alinhar: 'center' });
+      Y += espacoChave;
+    } else { // não cabe numa linha: quebra em duas (6 + 5 grupos)
+      const g = grupos.split(' ');
+      texto(doc, g.slice(0, 6).join(' '), I, Y, larguraBarras, { tamanho: e.chave, fonte: 'Helvetica-Bold', alinhar: 'center' });
+      texto(doc, g.slice(6).join(' '), I, Y + alturaLinha(e.chave), larguraBarras, { tamanho: e.chave, fonte: 'Helvetica-Bold', alinhar: 'center' });
+      Y += espacoChave + alturaLinha(e.chave);
+    }
+  } else {
+    rot('Chave de acesso');
+    texto(doc, 'Não informada', I, Y, largura(Y, 3), { tamanho: e.normal }); Y += alturaLinha(e.normal) + 0.8;
+  }
+
+  // 6) Protocolo
+  if (campos.has('protocolo') && n.protocolo && cabe(alturaLinha(e.normal) + 1)) {
+    texto(doc, `Protocolo: ${n.protocolo}`, I, Y, largura(Y, 3), { tamanho: e.normal - 1 }); Y += alturaLinha(e.normal - 1) + 0.6;
+  }
+
+  // 7) Produtos (ocupa o espaço que sobrar, guardando um pouco para a observação)
   const itens = itensDe(n);
-  rotulo(doc, 'Chave de acesso', I, Y, IL); Y += 3;
-  if (n.chave) {
-    const alturaBarras = itens.length ? 13 : 20; // com produtos, cede espaço para a lista
-    desenharBarras(doc, img.barras, I, Y, IL, alturaBarras);
-    Y += alturaBarras + 1.5;
-    texto(doc, formatarChave(n.chave), I, Y, IL, { tamanho: 9, fonte: 'Helvetica-Bold', alinhar: 'center' });
-    Y += 4.5;
-  } else {
-    texto(doc, 'Não informada', I, Y, IL, { tamanho: 9 });
-    Y += 4.5;
+  if (campos.has('produtos') && itens.length && cabe(alturaLinha(e.item) * 2 + 3)) {
+    separador();
+    rot(`Produtos (${itens.length})`);
+    const reserva = campos.has('observacao') && n.comentario ? alturaLinha(e.item) * 2 + 2 : 0;
+    const passo = alturaLinha(e.item);
+    const cabem = Math.max(1, Math.floor((limite - Y - reserva) / passo));
+    const mostrar = itens.length > cabem ? itens.slice(0, cabem - 1) : itens;
+    for (const i of mostrar) { texto(doc, linhaItem(i), I, Y, largura(Y, passo), { tamanho: e.item }); Y += passo; }
+    if (mostrar.length < itens.length) {
+      const resto = itens.length - mostrar.length;
+      texto(doc, `+ ${resto} ${resto > 1 ? 'itens' : 'item'} (ver nota completa pelo QR)`, I, Y, largura(Y, passo), { tamanho: e.item, fonte: 'Helvetica-Oblique' });
+      Y += passo;
+    }
+    Y += 0.6;
   }
-  if (n.protocolo) {
-    rotulo(doc, 'Protocolo de autorização de uso', I, Y, IL); Y += 2.6;
-    texto(doc, n.protocolo, I, Y, IL, { tamanho: 8.5 }); Y += 4.2;
-  }
-  linhaH(doc, X, Y, L); Y += 1.8;
 
-  const qr = 24; // médio: legível numa foto, sem dominar a etiqueta
-  const fimConteudo = y + h - m - p - qr - 1;
-  if (itens.length && Y < fimConteudo - 6) {
-    const reservaObs = n.comentario ? 9 : 0;
-    rotulo(doc, `Produtos (${itens.length})`, I, Y, IL); Y += 2.8;
-    Y += listaItens(doc, itens, I, Y, IL, fimConteudo - Y - reservaObs, 7.5) + 1;
-    linhaH(doc, X, Y, L); Y += 1.8;
+  // 8) Observação
+  if (campos.has('observacao') && n.comentario && cabe(alturaLinha(e.item) + 1)) {
+    Y += 0.6;
+    Y += paragrafo(doc, `Obs.: ${n.comentario}`, I, Y, largura(Y, limite - Y), limite - Y, e.item);
   }
-  if (n.comentario && Y < fimConteudo - 4) {
-    rotulo(doc, 'Observação', I, Y, IL); Y += 2.6;
-    paragrafo(doc, n.comentario, I, Y, IL, fimConteudo - Y, 8);
-  }
-  const base = y + h - m - p;
-  if (n.chave) paragrafo(doc, CONSULTA, I, base - qr, IL - qr - 4, 8, 6.5);
-  marcaSistema(doc, n, img, I, base - qr, IL, qr, qr);
-  doc.rect(X, topo, L, h - 2 * m).lineWidth(0.5).stroke('#000');
+
+  // Rodapé: consulta + nº do registro à esquerda, QR do sistema à direita (discreto)
+  if (e.consulta && n.chave) paragrafo(doc, CONSULTA, I, base - 7, IL - e.qr - 3, 4.5, e.consulta);
+  texto(doc, `Reg. ${registro(n.id)} · ${urlSemProtocolo(n.url)}`, I, base - 2.2, IL - e.qr - 2.5, { tamanho: e.reg });
+  doc.image(img.qr, I + IL - e.qr, inicioQR, { width: e.qr, height: e.qr });
+  doc.rect(X, topo, L, h - 2 * e.margem).lineWidth(e.linhaBorda).stroke('#000');
 }
-
-// Etiqueta média: 105 × 74,25 mm
-function etiqueta8(doc, n, img, x, y, w, h) {
-  const m = 3.5, X = x + m, L = w - 2 * m, p = 2, I = X + p, IL = L - 2 * p;
-  const topo = y + m;
-  let Y = topo + p;
-
-  texto(doc, `${numeroSerie(n)}${n.serie ? ` · Série ${n.serie}` : ''}`, I, Y, IL * 0.66, { tamanho: 10, fonte: 'Helvetica-Bold' });
-  texto(doc, n.data_emissao ? `Emissão ${dataBR(n.data_emissao)}` : '', I + IL * 0.66, Y + 0.6, IL * 0.34, { tamanho: 7.5, alinhar: 'right' });
-  Y += 4.8; linhaH(doc, X, Y, L); Y += 1.3;
-
-  rotulo(doc, 'Emitente', I, Y, IL);
-  Y += 2.3;
-  texto(doc, n.emitente_nome || 'Não identificado', I, Y, IL, { tamanho: 8.5, fonte: 'Helvetica-Bold' });
-  Y += 3.6;
-  texto(doc, docPessoa(n.emitente_cnpj), I, Y, IL, { tamanho: 7.5 });
-  Y += 3.6;
-  if (n.destinatario_nome) {
-    texto(doc, `Dest.: ${n.destinatario_nome}`, I, Y, IL, { tamanho: 7 });
-    Y += 3.3;
-  }
-  linhaH(doc, X, Y, L); Y += 1.3;
-
-  rotulo(doc, 'Chave de acesso', I, Y, IL); Y += 2.4;
-  if (n.chave) {
-    desenharBarras(doc, img.barras, I, Y, IL, 10);
-    Y += 11;
-    texto(doc, formatarChave(n.chave), I, Y, IL, { tamanho: 8, fonte: 'Helvetica-Bold', alinhar: 'center' });
-    Y += 3.8;
-  } else {
-    texto(doc, 'Não informada', I, Y, IL, { tamanho: 8 });
-    Y += 3.8;
-  }
-  if (n.protocolo) { texto(doc, `Protocolo: ${n.protocolo}`, I, Y, IL, { tamanho: 6.5 }); Y += 3; }
-
-  const base = y + h - m - p;
-  const qr = 18;
-  const itens = itensDe(n);
-  if (itens.length && base - 8 - Y > 3) {
-    const resumo = `Produtos: ${itens.map(linhaItem).join(' · ')}`;
-    const altura = Math.min(n.comentario ? 5.6 : 8.4, base - 8 - Y);
-    paragrafo(doc, resumo, I, Y + 0.5, IL - qr - 3, altura, 6.5);
-    Y += Math.min(altura, doc.heightOfString(resumo, { width: IL - qr - 3 })) + 0.8;
-  }
-  if (n.comentario && base - 8 - Y > 3) paragrafo(doc, `Obs.: ${n.comentario}`, I, Y + 0.5, IL - qr - 3, base - 8 - Y, 6.5);
-  if (n.chave) paragrafo(doc, CONSULTA, I, base - 7, IL - qr - 3, 4, 5.5);
-  marcaSistema(doc, n, img, I, base - qr, IL, qr, qr);
-  doc.rect(X, topo, L, h - 2 * m).lineWidth(0.4).stroke('#000');
-}
-
-// Etiqueta pequena: 105 × 37,1 mm (barras mais finas, 0,25 mm)
-function etiqueta16(doc, n, img, x, y, w, h) {
-  const m = 2.5, X = x + m, L = w - 2 * m, p = 1.8, I = X + p, IL = L - 2 * p;
-  const topo = y + m;
-  const qr = 14;
-  let Y = topo + p;
-
-  texto(doc, `${numeroSerie(n)}${n.serie ? ` · Série ${n.serie}` : ''}`, I, Y, IL * 0.62, { tamanho: 8.5, fonte: 'Helvetica-Bold' });
-  texto(doc, n.data_emissao ? `Emissão ${dataBR(n.data_emissao)}` : '', I + IL * 0.62, Y + 0.4, IL * 0.38, { tamanho: 7, alinhar: 'right' });
-  Y += 3.6;
-  texto(doc, n.emitente_nome || 'Emitente não identificado', I, Y, IL, { tamanho: 7, fonte: 'Helvetica-Bold' });
-  Y += 3;
-  texto(doc, docPessoa(n.emitente_cnpj), I, Y, IL, { tamanho: 6.5 });
-  Y += 3;
-  if (n.chave) {
-    desenharBarras(doc, img.barras, I, Y, IL - qr - 2, 7.5, 0.25);
-    Y += 8.2;
-    texto(doc, formatarChave(n.chave), I, Y, IL - qr - 2, { tamanho: 6.3, fonte: 'Helvetica-Bold', alinhar: 'center' });
-  } else {
-    texto(doc, 'Chave de acesso não informada', I, Y + 2, IL - qr - 2, { tamanho: 7 });
-  }
-  doc.image(img.qr, I + IL - qr, topo + h - 2 * m - p - qr, { width: qr, height: qr });
-  texto(doc, registro(n.id), I + IL - qr - 10, topo + h - 2 * m - p - 2, 8.5, { tamanho: 5, alinhar: 'right' });
-  doc.rect(X, topo, L, h - 2 * m).lineWidth(0.35).stroke('#000');
-}
-
-const DESENHAR = { 4: etiqueta4, 8: etiqueta8, 16: etiqueta16 };
 
 function linhasDeCorte(doc, { cols, rows }) {
   const w = A4.w / cols, h = A4.h / rows;
@@ -237,13 +234,15 @@ function linhasDeCorte(doc, { cols, rows }) {
   doc.restore();
 }
 
-// notas: [{ id, slug, url, chave, numero, serie, modelo, emitente_nome, emitente_cnpj,
-//           data_emissao, protocolo, comentario, created_at }]
-async function gerarPDF(notas, quantidadePorFolha = 4) {
-  const layout = LAYOUTS[quantidadePorFolha] || LAYOUTS[4];
+// notas: [{ id, url, chave, numero, serie, modelo, uf, emitente_nome, emitente_cnpj, destinatario_nome,
+//           destinatario_cnpj, data_emissao, valor_total, protocolo, itens, comentario }]
+// campos: quais blocos opcionais entram (ver topo do arquivo). Vazio = só a chave.
+async function gerarPDF(notas, quantidadePorFolha = 4, campos = []) {
+  const tamanho = LAYOUTS[quantidadePorFolha] ? Number(quantidadePorFolha) : 4;
+  const layout = LAYOUTS[tamanho];
   const porFolha = layout.cols * layout.rows;
-  const desenhar = DESENHAR[porFolha];
   const w = A4.w / layout.cols, h = A4.h / layout.rows;
+  const selecionados = lerCampos(campos);
 
   const imagens = await Promise.all(notas.map(async n => ({
     qr: await gerarQR(n.url),
@@ -264,7 +263,7 @@ async function gerarPDF(notas, quantidadePorFolha = 4) {
     }
     const col = pos % layout.cols, row = Math.floor(pos / layout.cols);
     doc.save();
-    desenhar(doc, n, imagens[i], col * w, row * h, w, h);
+    desenharEtiqueta(doc, n, imagens[i], col * w, row * h, w, h, tamanho, selecionados);
     doc.restore();
   });
 
@@ -273,4 +272,4 @@ async function gerarPDF(notas, quantidadePorFolha = 4) {
   return Buffer.concat(partes);
 }
 
-module.exports = { gerarPDF, LAYOUTS };
+module.exports = { gerarPDF, LAYOUTS, CAMPOS, lerCampos };

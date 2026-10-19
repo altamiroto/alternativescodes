@@ -150,7 +150,10 @@ $('#marcar-todas').addEventListener('change', e => {
 
 // ─── Etiquetas ───────────────────────────────────────
 function gerarEtiquetas(ids, layout, marcar) {
-  const params = new URLSearchParams({ ids: ids.join(','), layout, marcar: marcar ? '1' : '0' });
+  // Mesma escolha de "o que vai na etiqueta" da tela de impressão (padrão: só a chave)
+  let campos = [];
+  try { campos = JSON.parse(localStorage.getItem('nf_campos') || '[]'); } catch { /* só a chave */ }
+  const params = new URLSearchParams({ ids: ids.join(','), layout, marcar: marcar ? '1' : '0', campos: [].concat(campos).join(',') });
   window.open(`/api/admin/etiquetas.pdf?${params}`, '_blank');
 }
 

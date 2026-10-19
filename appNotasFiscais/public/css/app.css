@@ -275,6 +275,15 @@ input.chave { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; 
   margin: 0 -16px; padding: 10px 16px calc(12px + env(safe-area-inset-bottom));
   background: var(--bg); border-top: 1px solid var(--borda);
 }
+.campos-etiqueta { margin-bottom: 8px; border: 1.5px solid var(--borda); border-radius: 10px; background: var(--card); }
+.campos-etiqueta summary { padding: 10px 12px; cursor: pointer; font-size: 15px; list-style: none; }
+.campos-etiqueta summary::-webkit-details-marker { display: none; }
+.campos-etiqueta summary::after { content: ' ▸'; color: var(--suave); }
+.campos-etiqueta[open] summary::after { content: ' ▾'; }
+.campos-etiqueta .campos-lista { padding: 0 12px 10px; max-height: 45vh; overflow-y: auto; }
+.campos-etiqueta .campo { display: flex; align-items: center; gap: 10px; margin: 0; padding: 7px 0; font-weight: 400; font-size: 15px; cursor: pointer; }
+.campos-etiqueta .campo input { width: 22px; height: 22px; accent-color: var(--primaria); }
+.campos-etiqueta .campo.fixo { color: var(--suave); cursor: default; }
 .barra-imprimir #resumo-selecao { margin-top: 6px; font-weight: 600; }
 .tamanhos-compacto { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
 .tamanhos-compacto > span { flex: 1 0 100%; }

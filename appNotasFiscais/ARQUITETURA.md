@@ -121,17 +121,16 @@ quem registrou e a **lista de produtos** (quantidade e descrição). **Sem valor
 | 8 por folha | 105 × 74,25 mm | 18 mm | 0,30 mm/barra, 10 mm |
 | 16 por folha | 105 × 37,1 mm | 14 mm | 0,25 mm/barra, 7,5 mm |
 
-**Conteúdo**, em ordem de destaque:
-1. NF-e Nº + série + emissão.
-2. Emitente e CNPJ.
-3. Destinatário.
-4. Código de barras + chave de acesso.
-5. Protocolo de autorização.
-6. **Produtos** (quantidade e descrição, sem valores): até ~10 linhas na grande, resumo de 1 a 2
-   linhas na média e nenhum na pequena; "+ N itens" quando não cabe tudo.
-7. Observação.
-8. "Consulte a autenticidade em www.nfe.fazenda.gov.br/portal com a chave de acesso."
-9. No canto, discreto: QR do sistema, nº do registro e link em letra miúda.
+**Conteúdo — o que vai na etiqueta é escolhido na hora de imprimir** (seletor "📝 Na etiqueta" na
+barra de impressão; o app lembra a última escolha; `?campos=` na URL do PDF):
+- **Sempre:** chave de acesso com código de barras (maior quando está sozinha), frase "Consulte a
+  autenticidade em www.nfe.fazenda.gov.br/portal…", e no canto, discreto: QR do sistema, nº do
+  registro e link em letra miúda.
+- **Opcionais (padrão: nenhum):** Nº/série/emissão · Fornecedor e CNPJ · Destinatário · Produtos
+  (quantidade e descrição) · Valor total · Protocolo · Observação.
+- Os blocos são desenhados de cima para baixo; o espaço da chave é reservado primeiro e **o que não
+  couber fica de fora** (comum nas etiquetas de 8 e 16 por folha). Produtos ocupam o espaço que
+  sobra, com "+ N itens (ver nota completa pelo QR)".
 
 **Testado:** todos os QR Codes foram lidos mesmo em imagem de 150 dpi borrada (simulando foto ruim).
 O código de barras precisa de uma leitura de perto, e por isso a chave também vai impressa em números.
