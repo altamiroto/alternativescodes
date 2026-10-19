@@ -170,7 +170,16 @@ Ordem de prioridade:
      quando faltam dados (ex.: só a chave).
    - Nota **com XML e sem PDF** → `POST /api/v1/danfe` (qualquer data): gera e guarda o DANFE em PDF.
    - Roda ao adicionar a nota, no "Ler PDF/XML de novo" do admin e ao imprimir "1 por folha".
-   - Erros pelo header `X-Error-Code`; 1 nova tentativa em 429/503 respeitando `Retry-After`.
+   - Erros pelo header `X-Error-Code`. Uma requisição por vez (~1/s). Em 429/503 com `Retry-After`
+     até 5 s tenta mais 1 vez; com espera maior, **pausa todas as consultas** até liberar (sem
+     retry-storm, que faz a API banir o IP). Sai por **IPv4** (`dns ipv4first` + sem
+     autoSelectFamily): em IPv6 o limite conta a faixa /56, dividida com outros VPS.
+   - Falha passageira (limite, serviço fora, rede, pendente) → `notas.consulta_proxima_em` com espera
+     crescente (2, 5, 15, 30, 60, 120, 240, 480 min, sempre ≥ Retry-After), enquanto a nota estiver na
+     janela de datas. Um trabalho de fundo roda a cada minuto e completa a nota sozinho; a lista mostra
+     "⏳ Buscando a nota completa…" e se atualiza sozinha.
+   - Diagnóstico: `GET /api/admin/consulta-danfe/teste` (botão no /admin) testa IPv4 e IPv6 com uma
+     chave de DV inválido (resposta imediata, sem SEFAZ) e mostra status, limite e Retry-After.
    - `CONSULTA_DANFE=false` desliga. A chave (e o XML, para gerar o PDF) vão para esse serviço externo.
 3. **PDF com texto** (`src/parse.js`): chave, emitente, emissão, protocolo, valor e **produtos lidos
    pela posição do texto na página** (o valor também: o número abaixo de "VALOR/V. TOTAL DA NOTA",

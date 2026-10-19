@@ -6,6 +6,7 @@ const http = require('http');
 const PDF = Buffer.from('%PDF-1.3\n% teste\n');
 const XML = Buffer.from('<nfeProc><NFe/></nfeProc>');
 let tentativas503 = 0;
+let chamadas429 = 0;
 
 const servidor = http.createServer((req, res) => {
   let corpo = '';
@@ -18,6 +19,7 @@ const servidor = http.createServer((req, res) => {
         return res.end(JSON.stringify({ error: 'data_fora_da_janela', message: 'fora' }));
       }
       if (chave.endsWith('9') && tentativas503++ === 0) { res.writeHead(503, { 'Retry-After': '0' }); return res.end(); }
+      if (chave.endsWith('8')) { chamadas429++; res.writeHead(429, { 'Retry-After': '30', RateLimit: 'limit=60, remaining=0, reset=30' }); return res.end('Too many'); }
       res.writeHead(200, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ status: 'ok', chave, tipo: 'nfe', pdf_base64: PDF.toString('base64'), xml_base64: XML.toString('base64') }));
     }
@@ -52,6 +54,32 @@ test('consulta DANFE: sucesso, erro com X-Error-Code, nova tentativa em 503 e DA
   const outubro = new Date('2026-10-20T12:00:00-03:00');
   assert.strictEqual(c.podeConsultar('35261012345678000190550010001234561000000016', outubro), true);
   assert.strictEqual(c.podeConsultar('35261012345678000190650010001234561000000016', outubro), false); // NFC-e
+});
+
+test('429 com espera longa: não re-tenta e pausa as próximas consultas até liberar', async t => {
+  await new Promise(r => servidor.listen(0, r));
+  t.after(() => servidor.close());
+  process.env.CONSULTA_DANFE_URL = `http://127.0.0.1:${servidor.address().port}`;
+  delete require.cache[require.resolve('../src/consultaDanfe')];
+  const c = require('../src/consultaDanfe');
+
+  const d = await c.diagnosticar();
+  assert.strictEqual(d.ipv4.ok, true); // a chave de teste tem DV inválido → 400 normal
+  assert.strictEqual(d.ipv4.status, 400);
+
+  chamadas429 = 0;
+  const erro = await c.consultarChave('35261012345678000190550010001234561000000018').catch(e => e);
+  assert.strictEqual(erro.codigo, 'limite');
+  assert.ok(erro.esperarSegundos >= 29 && erro.esperarSegundos <= 30, String(erro.esperarSegundos));
+  assert.ok(c.ePassageira(erro.codigo));
+  assert.strictEqual(chamadas429, 1); // sem retry-storm
+
+  // durante a pausa nem chama a API
+  const depois = await c.consultarChave('35261012345678000190550010001234561000000016').catch(e => e);
+  assert.strictEqual(depois.codigo, 'limite');
+  assert.strictEqual(chamadas429, 1);
+  assert.ok(c.segundosParaLiberar() > 0);
+  assert.ok(!c.ePassageira('nao_encontrada'));
 });
 
 test('janela de datas da consulta pela chave (AAMM da chave)', () => {

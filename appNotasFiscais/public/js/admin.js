@@ -369,6 +369,39 @@ async function carregarUsuarios() {
   }));
 }
 
+// ─── Diagnóstico da Consulta DANFE ───────────────────
+$('#testar-consulta').addEventListener('click', async () => {
+  const botao = $('#testar-consulta');
+  botao.disabled = true;
+  $('#resultado-consulta').innerHTML = '<p class="suave">Testando…</p>';
+  try {
+    const d = await adm('/api/admin/consulta-danfe/teste');
+    const linha = r => {
+      if (r.erro) return `<li><b>${r.familia}</b>: <span class="selo">sem conexão</span> <small class="suave">${escapar(r.erro)}</small></li>`;
+      const selo = r.ok ? '<span class="selo ok">respondendo</span>'
+        : r.status === 429 ? '<span class="selo erro">limitado (429)</span>' : `<span class="selo erro">HTTP ${r.status}</span>`;
+      return `<li><b>${r.familia}</b> ${r.ip ? `(${escapar(r.ip)})` : ''}: ${selo}
+        <small class="suave">${r.ms} ms${r.ratelimit ? ` · limite: ${escapar(r.ratelimit)}` : ''}${r.retry_after ? ` · liberar em ${escapar(r.retry_after)} s` : ''}${r.servidor ? ` · ${escapar(r.servidor)}` : ''}</small></li>`;
+    };
+    let conclusao;
+    if (!d.ativa) conclusao = 'A consulta está desligada (CONSULTA_DANFE=false).';
+    else if (d.ipv4.ok) conclusao = d.forcar_ipv4
+      ? '✅ O servidor consegue consultar pelo IPv4, que é o caminho usado pelo app.'
+      : (d.ipv6.ok ? '✅ Consulta funcionando.' : '⚠️ O IPv6 está limitado. Tire CONSULTA_DANFE_IPV4=false das variáveis para o app usar o IPv4.');
+    else if (d.ipv4.status === 429) conclusao = '⛔ O IP deste servidor está limitado pelo consultadanfe.com. O app pausa e tenta de novo sozinho; se continuar por horas, o IP pode ter sido bloqueado (fale com contato@consultadanfe.com).';
+    else conclusao = '⛔ O servidor não consegue falar com o consultadanfe.com pelo IPv4. Confira a rede/firewall do VPS.';
+    $('#resultado-consulta').innerHTML = `
+      <ul style="margin:0 0 8px;padding-left:18px">${linha(d.ipv4)}${linha(d.ipv6)}</ul>
+      <p style="margin:0 0 6px"><b>${conclusao}</b></p>
+      <p class="suave pequeno" style="margin:0">${d.pausada_por_segundos ? `Consultas pausadas por mais ${d.pausada_por_segundos} s (a API pediu para esperar). ` : ''}
+        ${d.fila.aguardando ? `${d.fila.aguardando} nota(s) aguardando nova tentativa automática (próxima às ${fmt.hora(d.fila.proxima)}).` : 'Nenhuma nota aguardando nova tentativa.'}</p>`;
+  } catch (err) {
+    $('#resultado-consulta').innerHTML = `<p class="aviso erro">${escapar(err.message)}</p>`;
+  } finally {
+    botao.disabled = false;
+  }
+});
+
 // ─── Início ──────────────────────────────────────────
 async function entrar() {
   mostrarTela('notas');
