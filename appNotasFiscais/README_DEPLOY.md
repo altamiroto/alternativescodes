@@ -45,6 +45,7 @@ a **Internal Connection URL** ou os campos separados (host, porta, banco, usuár
 # Banco: use a URL interna OU as variáveis separadas (DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD)
 DATABASE_URL=postgres://...cole a URL interna do passo 2...
 DB_SCHEMA=notas_fiscais
+CONSULTA_DANFE=true
 PUBLIC_BASE_URL=https://minhasnotas.duckdns.org
 SESSION_SECRET=um-texto-longo-e-aleatorio-com-mais-de-40-caracteres
 ADMIN_USER=admin
@@ -53,6 +54,10 @@ DATA_DIR=/data
 MAX_FILE_MB=10
 TZ=America/Sao_Paulo
 ```
+
+**Consulta DANFE:** com `CONSULTA_DANFE=true` o app busca a nota completa (XML + DANFE em PDF) em
+consultadanfe.com quando a pessoa informa só a chave ou só o PDF. O VPS precisa conseguir acessar
+`https://consultadanfe.com` (normalmente já consegue). Para desligar, use `CONSULTA_DANFE=false`.
 
 **Mounts** → **Add Volume**: nome `notas-data`, *Mount Path* **`/data`**.
 > ⚠️ Sem esse volume, **todos os PDFs, fotos e vídeos somem a cada atualização**.

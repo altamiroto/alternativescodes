@@ -269,6 +269,9 @@ function irParaImpressao(r) {
   const nota = r.notas[0];
   const params = new URLSearchParams({ nova: nota.id });
   if (nota.registros_anteriores?.length) params.set('repetida', nota.id);
+  // resultado da Consulta DANFE (busca da nota completa pela chave)
+  if (nota.consulta?.status === 'completa') params.set('consulta', 'ok');
+  else if (nota.consulta?.status === 'falhou') params.set('consulta', nota.consulta.codigo || 'falhou');
   location.href = `/?${params}`;
 }
 

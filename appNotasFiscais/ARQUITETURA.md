@@ -120,13 +120,15 @@ quem registrou e a **lista de produtos** (quantidade e descrição). **Sem valor
 | 4 por folha | 105 × 148,5 mm | 24 mm | 0,30 mm/barra, 20 mm de altura |
 | 8 por folha | 105 × 74,25 mm | 18 mm | 0,30 mm/barra, 10 mm |
 | 16 por folha | 105 × 37,1 mm | 14 mm | 0,25 mm/barra, 7,5 mm |
+| **1 por folha · nota completa** | A4 inteira | — | o **DANFE completo** de cada nota (o PDF guardado ou obtido na Consulta DANFE); sem DANFE, uma página com todos os dados conhecidos |
 
 **Conteúdo — o que vai na etiqueta é escolhido na hora de imprimir** (seletor "📝 Na etiqueta" na
 barra de impressão; o app lembra a última escolha; `?campos=` na URL do PDF):
-- **Sempre:** chave de acesso com código de barras (maior quando está sozinha), frase "Consulte a
+- **Sempre:** chave de acesso com código de barras (maior quando está sozinha), **nº da nota, série
+  e data de emissão**, frase "Consulte a
   autenticidade em www.nfe.fazenda.gov.br/portal…", e no canto, discreto: QR do sistema, nº do
   registro e link em letra miúda.
-- **Opcionais (padrão: nenhum):** Nº/série/emissão · Fornecedor e CNPJ · Destinatário · Produtos
+- **Opcionais (padrão: nenhum):** Fornecedor e CNPJ · Destinatário · Produtos
   (quantidade e descrição) · Valor total · Protocolo · Observação.
 - Os blocos são desenhados de cima para baixo; o espaço da chave é reservado primeiro e **o que não
   couber fica de fora** (comum nas etiquetas de 8 e 16 por folha). Produtos ocupam o espaço que
@@ -156,16 +158,27 @@ O código de barras precisa de uma leitura de perto, e por isso a chave também 
 
 ## 6. Leitura dos dados
 
-1. **XML:** todos os campos, **lista de produtos** (descrição, código, EAN, NCM, quantidade) e protocolo.
-2. **PDF com texto:** chave, emitente (canhoto "RECEBEMOS DE ..."), data de emissão, protocolo,
-   valor e **produtos da tabela do DANFE** (melhor esforço: código, descrição, NCM, CST, CFOP, UN, QTD).
-   O **texto inteiro** é guardado para a busca por produto.
-3. **Só a chave:** UF, mês/ano, CNPJ, modelo, série e número.
-4. **PDF escaneado (imagem):** o arquivo é guardado e a leitura automática fica para a Fase 2 (OCR).
-
-Resultado: `parse_status` = `completo` (chave + emitente + data) | `parcial` | `so_chave` | `sem_chave`.
-
----
+Ordem de prioridade:
+1. **XML** (enviado ou obtido pela Consulta DANFE): todos os campos, produtos e protocolo — exato.
+2. **Consulta DANFE** ([consultadanfe.com](https://consultadanfe.com), gratuita) — `src/consultaDanfe.js`:
+   - Nota com chave de NF-e (modelo 55) e **sem XML** → `POST /api/v1/consulta`: guarda o **XML
+     oficial e o DANFE em PDF** no registro e preenche todos os dados pelo XML. Só vale para notas
+     do **mês corrente** (e do anterior até o dia 15); fora disso a pessoa vê o motivo e o cadastro
+     segue com o que foi enviado.
+   - Nota **com XML e sem PDF** → `POST /api/v1/danfe` (qualquer data): gera e guarda o DANFE em PDF.
+   - Roda ao adicionar a nota, no "Ler PDF/XML de novo" do admin e ao imprimir "1 por folha".
+   - Erros pelo header `X-Error-Code`; 1 nova tentativa em 429/503 respeitando `Retry-After`.
+   - `CONSULTA_DANFE=false` desliga. A chave (e o XML, para gerar o PDF) vão para esse serviço externo.
+3. **PDF com texto** (`src/parse.js`): chave, emitente, emissão, protocolo, valor e **produtos lidos
+   pela posição do texto na página** — acha o cabeçalho da tabela (CÓDIGO, DESCRIÇÃO, NCM, CFOP, UN,
+   QTD…), atribui cada texto à sua coluna, junta descrições quebradas em várias linhas e para nas
+   "informações adicionais do produto". Funciona no layout clássico (MOC 7.0) e no novo
+   (NT 2026.010, com "CST / CFOP", "QTD / UN" e NCM dentro da descrição), em fontes estreitas ou
+   largas e em notas de várias páginas. Testado contra o XML de origem em 22 variações de DANFE
+   (`test/fixtures`, dados fictícios) e num DANFE real.
+4. **Só a chave**: UF, mês/ano, CNPJ, modelo, série e número. Se o nome do arquivo trouxer a chave
+   (`NFE-3526…pdf`), ela é usada quando não aparece no texto do PDF.
+5. **PDF escaneado (imagem)**: o arquivo é guardado; sem texto para ler (OCR fica para a Fase 2).
 
 ## 7. Modelo de dados
 
