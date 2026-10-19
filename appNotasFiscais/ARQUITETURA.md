@@ -63,10 +63,11 @@ as notas fiscais (NF-e / DANFE) dos produtos em estoque.
 - Mostra **as notas que a própria pessoa adicionou**. O admin logado vê as de todos.
 - No topo, o botão grande **➕ Adicionar nota fiscal**.
 - Aba **"Para imprimir agora"** (padrão): as notas que a pessoa adicionou desde a última lista,
-  todas marcadas. A lista fica **guardada na conta** (`usuarios.lote_ids`), então vale em qualquer
+  as não impressas marcadas. A lista fica **guardada na conta** (`usuarios.lote_ids`), então vale em qualquer
   aparelho com o mesmo e-mail. **Não some ao imprimir:** fica com o aviso "✅ Esta lista já foi
-  impressa" para reimprimir se precisar. Recomeça quando ela adiciona uma nota depois de imprimir
-  ou toca em **🧹 Começar lista nova**.
+  impressa" e o selo "impressa em …" em cada nota. Notas adicionadas depois **entram na mesma lista**
+  (só as ainda não impressas vêm marcadas). A lista só esvazia quando a pessoa toca em
+  **🧹 Começar lista nova**.
 - Aba **"Notas antigas"**: todas as outras notas da pessoa, **nenhuma marcada**, com os selos
   "não impressa" ou "impressa em …" e uma busca. Ela marca só o que quiser reimprimir.
 - Cada nota da lista (nas duas abas) mostra emissão, **valor**, quantidade e nomes dos produtos.
@@ -163,14 +164,17 @@ Ordem de prioridade:
 2. **Consulta DANFE** ([consultadanfe.com](https://consultadanfe.com), gratuita) — `src/consultaDanfe.js`:
    - Nota com chave de NF-e (modelo 55) e **sem XML** → `POST /api/v1/consulta`: guarda o **XML
      oficial e o DANFE em PDF** no registro e preenche todos os dados pelo XML. Só vale para notas
-     do **mês corrente** (e do anterior até o dia 15); fora disso a pessoa vê o motivo e o cadastro
-     segue com o que foi enviado.
+     do **mês corrente** (e do anterior até o dia 15). O app confere a data pela própria chave (AAMM,
+     fuso de Brasília) e **nem chama o serviço** fora dessa janela; o cadastro segue com o que foi
+     enviado. Se o PDF enviado já trouxe produtos e valor, também não consulta. O aviso só aparece
+     quando faltam dados (ex.: só a chave).
    - Nota **com XML e sem PDF** → `POST /api/v1/danfe` (qualquer data): gera e guarda o DANFE em PDF.
    - Roda ao adicionar a nota, no "Ler PDF/XML de novo" do admin e ao imprimir "1 por folha".
    - Erros pelo header `X-Error-Code`; 1 nova tentativa em 429/503 respeitando `Retry-After`.
    - `CONSULTA_DANFE=false` desliga. A chave (e o XML, para gerar o PDF) vão para esse serviço externo.
 3. **PDF com texto** (`src/parse.js`): chave, emitente, emissão, protocolo, valor e **produtos lidos
-   pela posição do texto na página** — acha o cabeçalho da tabela (CÓDIGO, DESCRIÇÃO, NCM, CFOP, UN,
+   pela posição do texto na página** (o valor também: o número abaixo de "VALOR/V. TOTAL DA NOTA",
+   ou o "VALOR TOTAL: R$" do canhoto) — acha o cabeçalho da tabela (CÓDIGO, DESCRIÇÃO, NCM, CFOP, UN,
    QTD…), atribui cada texto à sua coluna, junta descrições quebradas em várias linhas e para nas
    "informações adicionais do produto". Funciona no layout clássico (MOC 7.0) e no novo
    (NT 2026.010, com "CST / CFOP", "QTD / UN" e NCM dentro da descrição), em fontes estreitas ou

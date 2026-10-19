@@ -29,3 +29,44 @@ for (const [pdf, xml] of casos) {
     });
   });
 }
+
+test('valor total do PDF bate com o XML', async () => {
+  for (const [pdf, xml] of casos) {
+    const esperado = parse.lerXML(fs.readFileSync(path.join(pasta, xml)));
+    const lido = await parse.lerPDF(fs.readFileSync(path.join(pasta, pdf)));
+    assert.strictEqual(lido.valor_total, esperado.valor_total, pdf);
+  }
+});
+
+// Layout de marketplace: "V. TOTAL DA NOTA" é o último título do quadro e o valor fica na linha de baixo,
+// depois dos valores das outras colunas
+function pdfQuadroImpostos(comQuadro) {
+  const PDFDocument = require('pdfkit');
+  return new Promise(resolve => {
+    const doc = new PDFDocument({ size: 'A4', margin: 20 });
+    const partes = [];
+    doc.on('data', p => partes.push(p)).on('end', () => resolve(Buffer.concat(partes)));
+    doc.font('Helvetica').fontSize(7);
+    doc.text('RECEBEMOS DE LOJA EXEMPLO LTDA OS PRODUTOS CONSTANTES DA NOTA FISCAL ELETRÔNICA INDICADA ABAIXO. EMISSÃO: 14/06/2026'
+      + (comQuadro ? '' : ' VALOR TOTAL: R$ 3.644,00'), 20, 30, { width: 550 });
+    if (comQuadro) {
+      const titulos = ['VALOR DO FRETE', 'VALOR DO SEGURO', 'DESCONTO', 'OUTRAS DESPESAS', 'VALOR TOTAL IPI', 'V. ICMS UF DEST.', 'V. TOT. TRIB.', 'V. TOTAL DA NOTA'];
+      const valores = ['0,00', '0,00', '904,89', '0,00', '0,00', '0,00', '1.551,62', '3.644,00'];
+      titulos.forEach((t, i) => {
+        doc.text(t, 20 + i * 70, 200, { lineBreak: false });
+        doc.text(valores[i], 20 + i * 70, 212, { width: 66, align: 'right', lineBreak: false });
+      });
+    }
+    doc.end();
+  });
+}
+
+test('valor total na linha de baixo do título "V. TOTAL DA NOTA"', async () => {
+  const lido = await parse.lerPDF(await pdfQuadroImpostos(true));
+  assert.strictEqual(lido.valor_total, 3644);
+});
+
+test('valor total pelo canhoto quando não há quadro de impostos', async () => {
+  const lido = await parse.lerPDF(await pdfQuadroImpostos(false));
+  assert.strictEqual(lido.valor_total, 3644);
+});

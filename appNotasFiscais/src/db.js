@@ -40,9 +40,8 @@ function nomeDoBanco() {
   return process.env.DB_NAME || 'postgres';
 }
 
-const pool = new Pool(configConexao());
-// Toda conexão nova enxerga só o schema do app
-pool.on('connect', cliente => cliente.query(`SET search_path TO "${SCHEMA}"`));
+// Toda conexão do app enxerga só o schema dele (definido já na abertura da conexão)
+const pool = new Pool({ ...configConexao(), options: `-c search_path=${SCHEMA}` });
 pool.on('error', err => console.error('❌ PostgreSQL:', err.message));
 
 // Se o banco indicado não existir, cria (conectando no banco "postgres" de manutenção)

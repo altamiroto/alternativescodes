@@ -263,6 +263,35 @@ function lerItensDANFE(texto, paginas = []) {
   return itens.length ? itens : null;
 }
 
+// Valor no quadro "Cálculo do imposto": o número logo abaixo do título "V(ALOR). TOTAL DA NOTA"
+const TITULO_VALOR = /^V(?:ALOR|L?\.)?\s*TOTAL\s+DA\s+NOTA/i;
+const VALOR_BR = /^(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})$/;
+
+function valorPorPosicao(paginas) {
+  for (const pagina of paginas) {
+    const linhas = agruparLinhas(pagina);
+    for (const [n, linha] of linhas.entries()) {
+      const ps = linha.pedacos;
+      for (let i = 0; i < ps.length; i++) {
+        let j = i, junto = ps[i].s;
+        while (!TITULO_VALOR.test(junto) && j + 1 < ps.length && j - i < 5) junto += ' ' + ps[++j].s;
+        if (!TITULO_VALOR.test(junto)) continue;
+        // A célula vai do título até o próximo título da linha (o valor costuma vir alinhado à direita)
+        const ini = ps[i].x - 5, fim = j + 1 < ps.length ? ps[j + 1].x : Infinity;
+        // Mesmo pedaço com o valor colado ("V. TOTAL DA NOTA 3.644,00")
+        const colado = /(\d{1,3}(?:\.\d{3})*,\d{2})\s*$/.exec(junto.replace(TITULO_VALOR, ''));
+        if (colado) return numeroBR(colado[1]);
+        for (const abaixo of linhas.slice(n + 1)) {
+          if (linha.y - abaixo.y > 40) break;
+          const v = abaixo.pedacos.find(p => VALOR_BR.test(p.s) && p.x + p.w / 2 >= ini && p.x + p.w / 2 < fim);
+          if (v) return numeroBR(VALOR_BR.exec(v.s)[1]);
+        }
+      }
+    }
+  }
+  return null;
+}
+
 function lerTextoDANFE(texto, paginas = []) {
   const t = texto.replace(/[ \t ]+/g, ' ');
   const dados = { chave: chave.encontrarNoTexto(t), itens: lerItensDANFE(t, paginas) };
@@ -270,8 +299,14 @@ function lerTextoDANFE(texto, paginas = []) {
   const emitente = /RECEBEMOS DE\s+(.{3,120}?)\s+OS PRODUTOS/i.exec(t);
   if (emitente) dados.emitente_nome = emitente[1].trim();
 
-  const valor = /VALOR TOTAL DA NOTA[^\d]{0,60}?([\d.]+,\d{2})/i.exec(t);
-  if (valor) dados.valor_total = numeroBR(valor[1]);
+  // 1º pela posição no quadro de impostos; senão pelo texto; por fim o canhoto ("VALOR TOTAL: R$ 3.644,00")
+  let valor = paginas.length ? valorPorPosicao(paginas) : null;
+  if (valor == null) {
+    const m = /V(?:ALOR|\.)\s*TOTAL DA NOTA[^\d]{0,60}?([\d.]+,\d{2})/i.exec(t)
+      || /VALOR TOTAL:?\s*R\$\s*([\d.]+,\d{2})/i.exec(t);
+    if (m) valor = numeroBR(m[1]);
+  }
+  if (valor != null) dados.valor_total = valor;
 
   const protocolo = /PROTOCOLO DE AUTORIZA[ÇC][ÃA]O(?: DE USO)?[^\d]{0,60}?(\d{15})(?:[\s-]+(\d{2}\/\d{2}\/\d{4}(?: \d{2}:\d{2}(?::\d{2})?)?))?/i.exec(t);
   if (protocolo) dados.protocolo = protocolo[2] ? `${protocolo[1]} - ${protocolo[2]}` : protocolo[1];

@@ -262,12 +262,19 @@ async function completarPelaConsulta(nota, quem) {
   const temPdf = arquivos.some(a => a.tipo === 'nota_pdf');
   if (temXml && temPdf) return { status: 'ja_completa' };
   if (!consultaDanfe.ativa()) return { status: 'desligada' };
+  // PDF enviado e lido por completo (produtos e valor): não precisa consultar
+  if (!temXml && temPdf && nota.valor_total != null && Array.isArray(nota.itens) && nota.itens.length) {
+    return { status: 'ja_completa' };
+  }
 
   const novos = [];
   let xml = null;
   try {
     if (!temXml) {
-      if (!consultaDanfe.podeConsultar(nota.chave)) return { status: 'sem_chave_nfe' };
+      if (!consultaDanfe.eChaveNFe(nota.chave)) return { status: 'sem_chave_nfe' };
+      if (!consultaDanfe.dentroDaJanela(nota.chave)) {
+        return { status: 'falhou', codigo: 'data_fora_da_janela', mensagem: consultaDanfe.MENSAGENS.data_fora_da_janela };
+      }
       const r = await consultaDanfe.consultarChave(nota.chave);
       xml = r.xml;
       if (r.xml) novos.push(arquivoTemporario(r.xml, `NFe${nota.chave}.xml`, 'xml', 'application/xml', 'nota_xml'));
@@ -437,12 +444,10 @@ app.post('/api/notas', limite(60), camposUpload, rota(async (req, res) => {
       await db.auditar(usuario.nome, 'criou', nota.id, { origem: nota.origem_dados, lote: criadas.length });
       resposta.push({ id: nota.id, slug: nota.slug, url: linkNota(req, nota.slug), nota: resumoPublico(nota), registros_anteriores: anteriores, consulta });
     }
-    // Entram na lista "Para imprimir agora" da pessoa. Se a lista já foi impressa,
-    // a primeira nota nova começa uma lista nova.
-    await db.query(
-      `UPDATE usuarios SET lote_ids = CASE WHEN lote_impresso THEN $2::int[] ELSE lote_ids || $2::int[] END,
-              lote_impresso = FALSE
-       WHERE id = $1`, [usuario.id, criadas.map(n => n.id)]);
+    // Entram na lista "Para imprimir agora" da pessoa, junto com as que já estavam lá
+    // (a lista só esvazia quando a pessoa toca em "Começar lista nova")
+    await db.query('UPDATE usuarios SET lote_ids = lote_ids || $2::int[], lote_impresso = FALSE WHERE id = $1',
+      [usuario.id, criadas.map(n => n.id)]);
     res.status(201).json({ notas: resposta });
   } finally {
     storage.removerTmp(enviados); // o que não foi movido (erro) é apagado
