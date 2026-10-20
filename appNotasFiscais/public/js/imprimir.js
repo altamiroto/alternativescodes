@@ -57,11 +57,6 @@ async function carregar() {
     r.notas.forEach(n => { if (!n.etiqueta_impressa_em && !imp.desmarcadas.has(n.id)) imp.selecionadas.add(n.id); });
   }
   mostrarTela();
-  // Nota esperando nova tentativa da Consulta DANFE: atualiza a lista sozinha até completar
-  clearTimeout(imp.atualizarDepois);
-  if (imp.notas.some(n => n.consulta_proxima_em)) {
-    imp.atualizarDepois = setTimeout(() => { $('#adicionada').classList.add('oculto'); carregar(); }, 60 * 1000);
-  }
 }
 
 function mostrarTela() {
@@ -149,7 +144,6 @@ function itemNota(n, lote) {
           <b>${escapar(fmt.tituloNota(n))}</b>
           <span>${escapar(n.emitente_nome || (n.emitente_cnpj ? `CNPJ ${fmt.cnpj(n.emitente_cnpj)}` : 'Fornecedor não identificado'))}</span>
           ${resumo ? `<span class="resumo">${resumo}</span>` : ''}
-          ${n.consulta_proxima_em ? `<span class="selo atencao buscando">⏳ Buscando a nota completa… nova tentativa às ${fmt.hora(n.consulta_proxima_em)}</span>` : ''}
           ${itens.length ? `<span class="produtos">📦 ${escapar(itens.slice(0, 3).map(i => i.descricao).join(' · '))}${itens.length > 3 ? ` <i>+${itens.length - 3}</i>` : ''}</span>` : ''}
           <small>Registrada em ${fmt.data(n.created_at)}${n.criado_por_nome ? ` por ${escapar(n.criado_por_nome)}` : ''}
             ${n.etiqueta_impressa_em ? ` · <span class="selo ok">impressa ${fmt.data(n.etiqueta_impressa_em)}</span>` : lote ? '' : ' · <span class="selo atencao">não impressa</span>'}</small>
@@ -281,19 +275,20 @@ function receberNova() {
     ? `✅ ${ids.length} notas adicionadas (${ids.map(fmt.registro).join(', ')}).`
     : `✅ Nota ${fmt.registro(ids[0])} adicionada. Adicione outra ou gere o PDF.`;
   const consulta = q.get('consulta');
-  const vaiTentar = q.has('tenta');
   const MOTIVOS = {
-    data_fora_da_janela: 'a busca automática só encontra notas deste mês (ou do mês passado, até o dia 15)',
     nao_encontrada: 'a SEFAZ não encontrou a nota por essa chave',
-    pendente: 'a nota ainda não foi autorizada na SEFAZ',
-    servico_indisponivel: 'o serviço de consulta está fora do ar agora',
-    limite: 'muitas consultas seguidas',
-    rede: 'sem conexão com o serviço de consulta',
+    erro_busca: 'a SEFAZ não respondeu a busca',
+    demorou: 'a busca demorou demais',
+    repetida: 'essa chave falhou há pouco; espere alguns minutos para tentar de novo',
+    chave_invalida: 'a chave de acesso não foi aceita',
+    api_key: 'a chave da API Meu Danfe é inválida (avise o administrador)',
+    saldo: 'sem saldo na conta Meu Danfe (avise o administrador)',
+    indisponivel: 'o serviço Meu Danfe está com problema agora',
+    rede: 'sem conexão com o serviço Meu Danfe',
   };
   const avisoConsulta = consulta === 'ok'
     ? '<div class="aviso ok">📥 Nota completa encontrada pela chave: dados, produtos e DANFE (PDF) foram guardados.</div>'
-    : consulta && vaiTentar ? `<div class="aviso atencao">⏳ Não deu para buscar a nota completa agora (${escapar(MOTIVOS[consulta] || 'falha na consulta')}). <b>O app vai tentar de novo sozinho</b> nos próximos minutos; a nota já está na lista e pode ser impressa.</div>`
-    : consulta ? `<div class="aviso atencao">ℹ️ Não deu para buscar a nota completa (${escapar(MOTIVOS[consulta] || 'falha na consulta')}). A nota foi guardada; para ter fornecedor e produtos, adicione também o PDF ou o XML dela.</div>` : '';
+    : consulta ? `<div class="aviso atencao">⚠️ <b>Não deu para buscar a nota completa</b> (${escapar(MOTIVOS[consulta] || 'falha na busca')}). A nota foi guardada só com o que foi enviado; para ter fornecedor e produtos, adicione também o PDF ou o XML dela.</div>` : '';
   $('#adicionada').innerHTML = `<div class="aviso ok" style="margin-top:12px">${texto}</div>${avisoConsulta}`
     + (repetidas.length ? `<div class="aviso atencao">⚠️ Esta nota fiscal já tinha sido registrada antes (${repetidas.map(fmt.registro).join(', ')}). Confira se não é repetida.</div>` : '');
   $('#adicionada').classList.remove('oculto');

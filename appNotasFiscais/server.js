@@ -14,9 +14,9 @@ const db = require('./src/db');
 const auth = require('./src/auth');
 const storage = require('./src/storage');
 const parse = require('./src/parse');
+const meuDanfe = require('./src/meuDanfe');
 const chave = require('./src/chave');
 const etiquetas = require('./src/etiquetas');
-const consultaDanfe = require('./src/consultaDanfe');
 const { PDFDocument } = require('pdf-lib');
 const bwipjs = require('bwip-js');
 
@@ -244,57 +244,69 @@ app.get('/api/chave/:chave', rota(async (req, res) => {
   res.json({ valida: true, dados: chave.decompor(c), registros_anteriores: rows });
 }));
 
-// ─── Consulta DANFE: completar a nota pela chave ─────
-// Se a nota tem chave de NF-e e ainda não tem o XML, consulta a API (consultadanfe.com), guarda o
-// XML oficial e o DANFE em PDF no registro e preenche todos os dados a partir do XML (produtos,
-// valor, emitente...). Se já tem o XML mas não tem o PDF, gera o DANFE pelo XML e guarda.
-// Nunca impede o cadastro: se a consulta falhar, devolve o motivo e segue com o que já tem.
+// ─── Meu Danfe: completar a nota pela chave ──────────
+// Na hora em que a nota é adicionada (e no "Ler PDF/XML de novo" do admin e no "1 por folha"):
+//   - sem XML e sem os dados (só a chave, ou PDF sem produtos/valor) → busca a nota pela chave
+//     (R$ 0,03), guarda o XML oficial e o DANFE em PDF e preenche os dados pelo XML;
+//   - com XML e sem PDF → gera o DANFE pelo XML (grátis) e guarda.
+// Se a mesma chave já foi buscada em outra nota, reaproveita os arquivos (não paga de novo).
+// Nunca impede o cadastro: se falhar, devolve o motivo e a nota fica com o que foi enviado.
 function arquivoTemporario(buffer, nome, ext, mime, papel) {
   const caminho = path.join(storage.TMP_DIR, crypto.randomUUID());
   fs.writeFileSync(caminho, buffer);
   return { arquivo: { path: caminho, originalname: nome, size: buffer.length }, tipoDetectado: { ext, mime }, papel };
 }
 
-async function completarPelaConsulta(nota, quem) {
+async function completarNota(nota, quem) {
   const { rows: arquivos } = await db.query(
     "SELECT tipo, caminho FROM arquivos WHERE nota_id = $1 AND deleted_at IS NULL AND tipo IN ('nota_pdf','nota_xml') ORDER BY id", [nota.id]);
   const temXml = arquivos.some(a => a.tipo === 'nota_xml');
   const temPdf = arquivos.some(a => a.tipo === 'nota_pdf');
   if (temXml && temPdf) return { status: 'ja_completa' };
-  if (!consultaDanfe.ativa()) return { status: 'desligada' };
-  // PDF enviado e lido por completo (produtos e valor): não precisa consultar
+  // PDF enviado e lido por completo (produtos e valor): não precisa buscar
   if (!temXml && temPdf && nota.valor_total != null && Array.isArray(nota.itens) && nota.itens.length) {
     return { status: 'ja_completa' };
   }
+  if (!meuDanfe.ativa()) return { status: 'desligada' };
+
+  // Outra nota com a mesma chave já tem o XML/PDF oficial: só liga os arquivos a esta
+  const reaproveitar = nota.chave ? (await db.query(
+    `SELECT DISTINCT ON (a.tipo) a.tipo, a.nome_original AS nome, a.caminho, a.mime, a.tamanho, a.sha256
+     FROM arquivos a JOIN notas n ON n.id = a.nota_id
+     WHERE n.chave = $1 AND n.id <> $2 AND n.deleted_at IS NULL AND a.deleted_at IS NULL AND a.tipo IN ('nota_xml','nota_pdf')
+     ORDER BY a.tipo, a.id`, [nota.chave, nota.id])).rows.filter(a => (a.tipo === 'nota_xml' ? !temXml : !temPdf)) : [];
 
   const novos = [];
   let xml = null;
-  try {
-    if (!temXml) {
-      if (!consultaDanfe.eChaveNFe(nota.chave)) return { status: 'sem_chave_nfe' };
-      if (!consultaDanfe.dentroDaJanela(nota.chave)) {
-        return { status: 'falhou', codigo: 'data_fora_da_janela', mensagem: consultaDanfe.MENSAGENS.data_fora_da_janela };
+  if (!temXml && reaproveitar.some(a => a.tipo === 'nota_xml')) {
+    xml = fs.readFileSync(storage.caminhoAbsoluto(reaproveitar.find(a => a.tipo === 'nota_xml').caminho));
+  } else {
+    try {
+      if (!temXml) {
+        if (!meuDanfe.podeBuscar(nota.chave)) return { status: 'sem_chave_nfe' };
+        const r = await meuDanfe.buscarNota(nota.chave);
+        xml = r.xml;
+        novos.push(arquivoTemporario(r.xml, `NFe${nota.chave}.xml`, 'xml', 'application/xml', 'nota_xml'));
+        if (r.pdf && !temPdf) novos.push(arquivoTemporario(r.pdf, `DANFE-${nota.chave}.pdf`, 'pdf', 'application/pdf', 'nota_pdf'));
+      } else if (!reaproveitar.some(a => a.tipo === 'nota_pdf')) {
+        const a = arquivos.find(x => x.tipo === 'nota_xml');
+        const pdf = await meuDanfe.gerarDanfe(fs.readFileSync(storage.caminhoAbsoluto(a.caminho)));
+        novos.push(arquivoTemporario(pdf, `DANFE-${nota.chave || nota.id}.pdf`, 'pdf', 'application/pdf', 'nota_pdf'));
       }
-      const r = await consultaDanfe.consultarChave(nota.chave);
-      xml = r.xml;
-      if (r.xml) novos.push(arquivoTemporario(r.xml, `NFe${nota.chave}.xml`, 'xml', 'application/xml', 'nota_xml'));
-      if (r.pdf && !temPdf) novos.push(arquivoTemporario(r.pdf, `DANFE-${nota.chave}.pdf`, 'pdf', 'application/pdf', 'nota_pdf'));
-    } else {
-      const a = arquivos.find(x => x.tipo === 'nota_xml');
-      const pdf = await consultaDanfe.gerarDanfe(fs.readFileSync(storage.caminhoAbsoluto(a.caminho)));
-      novos.push(arquivoTemporario(pdf, `DANFE-${nota.chave || nota.id}.pdf`, 'pdf', 'application/pdf', 'nota_pdf'));
+    } catch (err) {
+      storage.removerTmp(novos.map(n => n.arquivo));
+      if (!(err instanceof meuDanfe.ErroMeuDanfe)) throw err;
+      await db.auditar(quem, 'Meu Danfe falhou', nota.id, { codigo: err.codigo, status: err.status });
+      return { status: 'falhou', codigo: err.codigo, mensagem: err.message };
     }
-  } catch (err) {
-    storage.removerTmp(novos.map(n => n.arquivo));
-    if (!(err instanceof consultaDanfe.ErroConsulta)) throw err;
-    const proxima = await agendarNovaConsulta(nota, err);
-    await db.auditar(quem, 'consulta DANFE falhou', nota.id, { codigo: err.codigo, status: err.status, nova_tentativa: proxima });
-    return { status: 'falhou', codigo: err.codigo, mensagem: err.message, nova_tentativa: proxima };
   }
 
   const cliente = await db.pool.connect();
   try {
     await salvarArquivos(cliente, nota.id, novos, null);
+    // reaproveitados: o que esta nota ainda não tem e não acabou de chegar
+    const ligar = reaproveitar.filter(a => !novos.some(n => n.papel === a.tipo));
+    await vincularArquivos(cliente, nota.id, ligar, null);
   } finally {
     cliente.release();
   }
@@ -314,49 +326,8 @@ async function completarPelaConsulta(nota, quem) {
         [nota.id, ...campos.map(c => valorBanco(c, dados[c]))]);
     }
   }
-  await db.query('UPDATE notas SET consulta_proxima_em = NULL, consulta_erro = NULL WHERE id = $1', [nota.id]);
-  await db.auditar(quem, 'consulta DANFE', nota.id, { xml: !!xml, arquivos: novos.map(n => n.papel) });
-  return { status: 'completa', xml: !!xml, pdf: novos.some(n => n.papel === 'nota_pdf') };
-}
-
-// Falha passageira (limite da API, serviço fora, sem rede): agenda nova tentativa automática,
-// com espera crescente, enquanto a nota estiver na janela de datas da consulta. Devolve quando
-// será a próxima tentativa (ou null, se não vai tentar de novo).
-const ESPERAS_MIN = [2, 5, 15, 30, 60, 120, 240, 480];
-
-async function agendarNovaConsulta(nota, err) {
-  const tentativas = (nota.consulta_tentativas || 0) + 1;
-  const tentarDeNovo = consultaDanfe.ePassageira(err.codigo) && tentativas <= ESPERAS_MIN.length
-    && consultaDanfe.dentroDaJanela(nota.chave);
-  const segundos = tentarDeNovo
-    ? Math.max(ESPERAS_MIN[tentativas - 1] * 60, (err.esperarSegundos || 0) + 5)
-    : null;
-  const { rows: [r] } = await db.query(
-    `UPDATE notas SET consulta_tentativas = $2, consulta_erro = $3,
-            consulta_proxima_em = CASE WHEN $4::int IS NULL THEN NULL ELSE NOW() + make_interval(secs => $4::int) END
-     WHERE id = $1 RETURNING consulta_proxima_em`, [nota.id, tentativas, err.codigo, segundos]);
-  return r?.consulta_proxima_em || null;
-}
-
-// Tentativas automáticas: a cada minuto pega as notas cuja hora chegou (uma de cada vez)
-let tentandoConsultas = false;
-async function tentarConsultasPendentes() {
-  if (tentandoConsultas || !consultaDanfe.ativa() || consultaDanfe.segundosParaLiberar() > 0) return;
-  tentandoConsultas = true;
-  try {
-    const { rows } = await db.query(
-      `SELECT * FROM notas WHERE consulta_proxima_em <= NOW() AND deleted_at IS NULL ORDER BY consulta_proxima_em LIMIT 5`);
-    for (const nota of rows) {
-      const r = await completarPelaConsulta(nota, 'sistema (nova tentativa)');
-      if (r.status === 'completa') console.log(`📥 Nota #${nota.id} completada pela Consulta DANFE (tentativa automática).`);
-      else if (!r.nova_tentativa) await db.query('UPDATE notas SET consulta_proxima_em = NULL WHERE id = $1', [nota.id]);
-      if (r.codigo === 'limite') break; // a API pediu para esperar: o resto fica para depois
-    }
-  } catch (err) {
-    console.warn('⚠️  Tentativas automáticas da Consulta DANFE:', err.message);
-  } finally {
-    tentandoConsultas = false;
-  }
+  await db.auditar(quem, 'Meu Danfe', nota.id, { xml: !!xml, novos: novos.map(n => n.papel), reaproveitados: reaproveitar.map(a => a.tipo) });
+  return { status: 'completa' };
 }
 
 // ─── Envio de notas (uma ou várias de uma vez) ───────
@@ -470,10 +441,10 @@ app.post('/api/notas', limite(60), camposUpload, rota(async (req, res) => {
 
     const resposta = [];
     for (let nota of criadas) {
-      // Chave de NF-e sem XML: busca a nota completa (XML + DANFE em PDF) na Consulta DANFE
-      const consulta = await completarPelaConsulta(nota, usuario.nome).catch(err => {
-        console.warn('⚠️  Consulta DANFE:', err.message);
-        return { status: 'falhou', codigo: 'erro_interno', mensagem: 'Falha ao consultar a nota.' };
+      // Sem XML e sem os dados: busca a nota completa (XML + DANFE em PDF) no Meu Danfe, na hora
+      const consulta = await completarNota(nota, usuario.nome).catch(err => {
+        console.warn('⚠️  Meu Danfe:', err.message);
+        return { status: 'falhou', codigo: 'erro_interno', mensagem: 'Falha ao buscar a nota.' };
       });
       if (consulta.status === 'completa') ({ rows: [nota] } = await db.query('SELECT * FROM notas WHERE id = $1', [nota.id]));
       let anteriores = [];
@@ -598,7 +569,7 @@ async function quemImprime(req) {
 
 // GET para o navegador abrir o PDF direto numa aba (funciona também no iPhone)
 //   ...etiquetas.pdf?ids=1,2,3&layout=4&marcar=1
-// "1 por folha": junta num PDF só o DANFE de cada nota. Sem DANFE guardado, busca na Consulta DANFE
+// "1 por folha": junta num PDF só o DANFE de cada nota. Sem DANFE guardado, busca no Meu Danfe
 // (pela chave ou gerando pelo XML) e guarda; sem nada disso, faz uma página com todos os dados.
 async function juntarDanfes(notas, req, quem) {
   const saida = await PDFDocument.create();
@@ -610,7 +581,7 @@ async function juntarDanfes(notas, req, quem) {
   for (let n of notas) {
     let pdf = await pdfDaNota(n.id);
     if (!pdf) {
-      const r = await completarPelaConsulta(n, quem.nome).catch(() => ({ status: 'falhou' }));
+      const r = await completarNota(n, quem.nome).catch(() => ({ status: 'falhou' }));
       if (r.status === 'completa') {
         pdf = await pdfDaNota(n.id);
         ({ rows: [n] } = await db.query(
@@ -700,7 +671,6 @@ app.get('/api/impressao/notas', rota(async (req, res) => {
     `SELECT n.id, n.slug, n.chave, n.numero, n.serie, n.modelo, n.uf, n.emitente_nome, n.emitente_cnpj,
             n.destinatario_nome, n.destinatario_cnpj, n.data_emissao, n.valor_total, n.protocolo, n.itens,
             n.comentario, n.etiqueta_impressa_em, n.created_at, u.nome AS criado_por_nome,
-            n.consulta_proxima_em, n.consulta_erro,
             (SELECT coalesce(json_agg(json_build_object('id', a.id, 'tipo', a.tipo, 'nome', a.nome_original,
                     'mime', a.mime, 'tamanho', a.tamanho) ORDER BY a.id), '[]')
              FROM arquivos a WHERE a.nota_id = n.id AND a.deleted_at IS NULL) AS arquivos
@@ -874,7 +844,7 @@ app.post('/api/admin/notas/:id/reprocessar', rota(async (req, res) => {
   const id = Number(req.params.id) || 0;
   let { rows: [nota] } = await db.query('SELECT * FROM notas WHERE id = $1', [id]);
   if (!nota) return erro(res, 404, 'Nota não encontrada.');
-  const consulta = await completarPelaConsulta(nota, ADMIN);
+  const consulta = await completarNota(nota, ADMIN);
   if (consulta.status === 'completa') ({ rows: [nota] } = await db.query('SELECT * FROM notas WHERE id = $1', [id]));
   const { rows: arquivos } = await db.query(
     "SELECT tipo, caminho FROM arquivos WHERE nota_id = $1 AND deleted_at IS NULL AND tipo IN ('nota_pdf','nota_xml') ORDER BY id", [id]);
@@ -949,13 +919,6 @@ app.get('/api/admin/export.csv', rota(async (req, res) => {
 }));
 
 // ─── Usuários (quem envia) ───────────────────────────
-// Diagnóstico da Consulta DANFE: mostra o que o servidor recebe da API por IPv4 e por IPv6
-app.get('/api/admin/consulta-danfe/teste', rota(async (req, res) => {
-  const { rows: [fila] } = await db.query(
-    'SELECT count(*)::int AS aguardando, min(consulta_proxima_em) AS proxima FROM notas WHERE consulta_proxima_em IS NOT NULL AND deleted_at IS NULL');
-  res.json({ ...await consultaDanfe.diagnosticar(), fila });
-}));
-
 app.get('/api/admin/usuarios', rota(async (req, res) => {
   const { rows } = await db.query(
     `SELECT u.*, (SELECT count(*)::int FROM notas n WHERE n.criado_por = u.id AND n.deleted_at IS NULL) AS qtd_notas
@@ -997,7 +960,6 @@ async function iniciar() {
   if (!process.env.ADMIN_PASSWORD) console.warn('⚠️  ADMIN_PASSWORD não definido: o painel /admin ficará inacessível.');
   if (!process.env.PUBLIC_BASE_URL) console.warn('⚠️  PUBLIC_BASE_URL não definido: os links usarão o endereço de cada acesso.');
   app.listen(PORT, () => console.log(`🚀 Servidor na porta ${PORT}`));
-  setInterval(tentarConsultasPendentes, 60 * 1000).unref();
 }
 
 if (require.main === module) {

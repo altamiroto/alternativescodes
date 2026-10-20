@@ -121,7 +121,7 @@ quem registrou e a **lista de produtos** (quantidade e descrição). **Sem valor
 | 4 por folha | 105 × 148,5 mm | 24 mm | 0,30 mm/barra, 20 mm de altura |
 | 8 por folha | 105 × 74,25 mm | 18 mm | 0,30 mm/barra, 10 mm |
 | 16 por folha | 105 × 37,1 mm | 14 mm | 0,25 mm/barra, 7,5 mm |
-| **1 por folha · nota completa** | A4 inteira | — | o **DANFE completo** de cada nota (o PDF guardado ou obtido na Consulta DANFE); sem DANFE, uma página com todos os dados conhecidos |
+| **1 por folha · nota completa** | A4 inteira | — | o **DANFE completo** de cada nota (o PDF enviado ou obtido no Meu Danfe); sem DANFE, uma página com todos os dados conhecidos |
 
 **Conteúdo — o que vai na etiqueta é escolhido na hora de imprimir** (seletor "📝 Na etiqueta" na
 barra de impressão; o app lembra a última escolha; `?campos=` na URL do PDF):
@@ -160,27 +160,22 @@ O código de barras precisa de uma leitura de perto, e por isso a chave também 
 ## 6. Leitura dos dados
 
 Ordem de prioridade:
-1. **XML** (enviado ou obtido pela Consulta DANFE): todos os campos, produtos e protocolo — exato.
-2. **Consulta DANFE** ([consultadanfe.com](https://consultadanfe.com), gratuita) — `src/consultaDanfe.js`:
-   - Nota com chave de NF-e (modelo 55) e **sem XML** → `POST /api/v1/consulta`: guarda o **XML
-     oficial e o DANFE em PDF** no registro e preenche todos os dados pelo XML. Só vale para notas
-     do **mês corrente** (e do anterior até o dia 15). O app confere a data pela própria chave (AAMM,
-     fuso de Brasília) e **nem chama o serviço** fora dessa janela; o cadastro segue com o que foi
-     enviado. Se o PDF enviado já trouxe produtos e valor, também não consulta. O aviso só aparece
-     quando faltam dados (ex.: só a chave).
-   - Nota **com XML e sem PDF** → `POST /api/v1/danfe` (qualquer data): gera e guarda o DANFE em PDF.
-   - Roda ao adicionar a nota, no "Ler PDF/XML de novo" do admin e ao imprimir "1 por folha".
-   - Erros pelo header `X-Error-Code`. Uma requisição por vez (~1/s). Em 429/503 com `Retry-After`
-     até 5 s tenta mais 1 vez; com espera maior, **pausa todas as consultas** até liberar (sem
-     retry-storm, que faz a API banir o IP). Sai por **IPv4** (`dns ipv4first` + sem
-     autoSelectFamily): em IPv6 o limite conta a faixa /56, dividida com outros VPS.
-   - Falha passageira (limite, serviço fora, rede, pendente) → `notas.consulta_proxima_em` com espera
-     crescente (2, 5, 15, 30, 60, 120, 240, 480 min, sempre ≥ Retry-After), enquanto a nota estiver na
-     janela de datas. Um trabalho de fundo roda a cada minuto e completa a nota sozinho; a lista mostra
-     "⏳ Buscando a nota completa…" e se atualiza sozinha.
-   - Diagnóstico: `GET /api/admin/consulta-danfe/teste` (botão no /admin) testa IPv4 e IPv6 com uma
-     chave de DV inválido (resposta imediata, sem SEFAZ) e mostra status, limite e Retry-After.
-   - `CONSULTA_DANFE=false` desliga. A chave (e o XML, para gerar o PDF) vão para esse serviço externo.
+1. **XML** (enviado ou obtido no Meu Danfe): todos os campos, produtos e protocolo — exato.
+2. **Meu Danfe** ([meudanfe.com.br](https://meudanfe.com.br), API v2 paga) — `src/meuDanfe.js`:
+   - Nota **sem XML e sem os dados** (só a chave, ou PDF sem produtos/valor) → `PUT /fd/add/{chave}`
+     (R$ 0,03) e consulta o status a cada 2 s até `OK` (no máximo `MEUDANFE_ESPERA`, 30 s); depois
+     `GET /fd/get/xml` e `GET /fd/get/da` (grátis): guarda o **XML oficial e o DANFE em PDF** e
+     preenche todos os dados pelo XML. Qualquer data de emissão.
+   - Nota **com XML e sem PDF** → `POST /fd/convert/xml-to-da` (grátis): gera e guarda o DANFE.
+   - **Mesma chave em outra nota** com XML/PDF já guardados → só liga os arquivos (não chama a API).
+   - Roda **só na hora**: ao adicionar, no "Ler PDF/XML de novo" do admin e no "1 por folha". Se
+     falhar, mostra o motivo (não encontrada, sem saldo, Api-Key inválida, demorou…) e segue.
+   - Regras da API respeitadas: uma requisição por vez (≥ 0,5 s entre elas), ≥ 1 s entre consultas
+     de status e **não repete por 10 min uma chave que voltou "não encontrada"/erro** (insistir
+     bloqueia a conta).
+   - Sem `MEUDANFE_API_KEY`, fica desligado. A chave (e o XML, para gerar o PDF) vão para esse serviço.
+   - (O consultadanfe.com, usado antes, foi removido: só aceita chamadas do próprio site no
+     navegador e limitava o IP do VPS.)
 3. **PDF com texto** (`src/parse.js`): chave, emitente, emissão, protocolo, valor e **produtos lidos
    pela posição do texto na página** (o valor também: o número abaixo de "VALOR/V. TOTAL DA NOTA",
    ou o "VALOR TOTAL: R$" do canhoto) — acha o cabeçalho da tabela (CÓDIGO, DESCRIÇÃO, NCM, CFOP, UN,
