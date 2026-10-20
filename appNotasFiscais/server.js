@@ -14,6 +14,7 @@ const db = require('./src/db');
 const auth = require('./src/auth');
 const storage = require('./src/storage');
 const parse = require('./src/parse');
+const meuDanfe = require('./src/meuDanfe');
 const chave = require('./src/chave');
 const etiquetas = require('./src/etiquetas');
 const { PDFDocument } = require('pdf-lib');
@@ -243,6 +244,92 @@ app.get('/api/chave/:chave', rota(async (req, res) => {
   res.json({ valida: true, dados: chave.decompor(c), registros_anteriores: rows });
 }));
 
+// ─── Meu Danfe: completar a nota pela chave ──────────
+// Na hora em que a nota é adicionada (e no "Ler PDF/XML de novo" do admin e no "1 por folha"):
+//   - sem XML e sem os dados (só a chave, ou PDF sem produtos/valor) → busca a nota pela chave
+//     (R$ 0,03), guarda o XML oficial e o DANFE em PDF e preenche os dados pelo XML;
+//   - com XML e sem PDF → gera o DANFE pelo XML (grátis) e guarda.
+// Se a mesma chave já foi buscada em outra nota, reaproveita os arquivos (não paga de novo).
+// Nunca impede o cadastro: se falhar, devolve o motivo e a nota fica com o que foi enviado.
+function arquivoTemporario(buffer, nome, ext, mime, papel) {
+  const caminho = path.join(storage.TMP_DIR, crypto.randomUUID());
+  fs.writeFileSync(caminho, buffer);
+  return { arquivo: { path: caminho, originalname: nome, size: buffer.length }, tipoDetectado: { ext, mime }, papel };
+}
+
+async function completarNota(nota, quem) {
+  const { rows: arquivos } = await db.query(
+    "SELECT tipo, caminho FROM arquivos WHERE nota_id = $1 AND deleted_at IS NULL AND tipo IN ('nota_pdf','nota_xml') ORDER BY id", [nota.id]);
+  const temXml = arquivos.some(a => a.tipo === 'nota_xml');
+  const temPdf = arquivos.some(a => a.tipo === 'nota_pdf');
+  if (temXml && temPdf) return { status: 'ja_completa' };
+  // PDF enviado e lido por completo (produtos e valor): não precisa buscar
+  if (!temXml && temPdf && nota.valor_total != null && Array.isArray(nota.itens) && nota.itens.length) {
+    return { status: 'ja_completa' };
+  }
+  if (!meuDanfe.ativa()) return { status: 'desligada' };
+
+  // Outra nota com a mesma chave já tem o XML/PDF oficial: só liga os arquivos a esta
+  const reaproveitar = nota.chave ? (await db.query(
+    `SELECT DISTINCT ON (a.tipo) a.tipo, a.nome_original AS nome, a.caminho, a.mime, a.tamanho, a.sha256
+     FROM arquivos a JOIN notas n ON n.id = a.nota_id
+     WHERE n.chave = $1 AND n.id <> $2 AND n.deleted_at IS NULL AND a.deleted_at IS NULL AND a.tipo IN ('nota_xml','nota_pdf')
+     ORDER BY a.tipo, a.id`, [nota.chave, nota.id])).rows.filter(a => (a.tipo === 'nota_xml' ? !temXml : !temPdf)) : [];
+
+  const novos = [];
+  let xml = null;
+  if (!temXml && reaproveitar.some(a => a.tipo === 'nota_xml')) {
+    xml = fs.readFileSync(storage.caminhoAbsoluto(reaproveitar.find(a => a.tipo === 'nota_xml').caminho));
+  } else {
+    try {
+      if (!temXml) {
+        if (!meuDanfe.podeBuscar(nota.chave)) return { status: 'sem_chave_nfe' };
+        const r = await meuDanfe.buscarNota(nota.chave);
+        xml = r.xml;
+        novos.push(arquivoTemporario(r.xml, `NFe${nota.chave}.xml`, 'xml', 'application/xml', 'nota_xml'));
+        if (r.pdf && !temPdf) novos.push(arquivoTemporario(r.pdf, `DANFE-${nota.chave}.pdf`, 'pdf', 'application/pdf', 'nota_pdf'));
+      } else if (!reaproveitar.some(a => a.tipo === 'nota_pdf')) {
+        const a = arquivos.find(x => x.tipo === 'nota_xml');
+        const pdf = await meuDanfe.gerarDanfe(fs.readFileSync(storage.caminhoAbsoluto(a.caminho)));
+        novos.push(arquivoTemporario(pdf, `DANFE-${nota.chave || nota.id}.pdf`, 'pdf', 'application/pdf', 'nota_pdf'));
+      }
+    } catch (err) {
+      storage.removerTmp(novos.map(n => n.arquivo));
+      if (!(err instanceof meuDanfe.ErroMeuDanfe)) throw err;
+      await db.auditar(quem, 'Meu Danfe falhou', nota.id, { codigo: err.codigo, status: err.status });
+      return { status: 'falhou', codigo: err.codigo, mensagem: err.message };
+    }
+  }
+
+  const cliente = await db.pool.connect();
+  try {
+    await salvarArquivos(cliente, nota.id, novos, null);
+    // reaproveitados: o que esta nota ainda não tem e não acabou de chegar
+    const ligar = reaproveitar.filter(a => !novos.some(n => n.papel === a.tipo));
+    await vincularArquivos(cliente, nota.id, ligar, null);
+  } finally {
+    cliente.release();
+  }
+
+  // XML oficial: os dados dele passam a valer (o comentário de quem registrou continua)
+  if (xml) {
+    const pdfAtual = arquivos.find(a => a.tipo === 'nota_pdf');
+    const dados = await parse.analisar({
+      xmlBuffer: xml,
+      pdfBuffer: pdfAtual ? fs.readFileSync(storage.caminhoAbsoluto(pdfAtual.caminho)) : null,
+      chaveDigitada: nota.chave,
+    });
+    const campos = CAMPOS_NOTA.filter(c => dados[c] != null);
+    if (campos.length) {
+      await db.query(
+        `UPDATE notas SET ${campos.map((c, i) => `${c} = $${i + 2}`).join(', ')}, updated_at = NOW() WHERE id = $1`,
+        [nota.id, ...campos.map(c => valorBanco(c, dados[c]))]);
+    }
+  }
+  await db.auditar(quem, 'Meu Danfe', nota.id, { xml: !!xml, novos: novos.map(n => n.papel), reaproveitados: reaproveitar.map(a => a.tipo) });
+  return { status: 'completa' };
+}
+
 // ─── Envio de notas (uma ou várias de uma vez) ───────
 // Junta dados de PDF e XML da mesma nota: o XML manda, o PDF completa o que faltar
 function mesclarDados(a, b) {
@@ -353,7 +440,13 @@ app.post('/api/notas', limite(60), camposUpload, rota(async (req, res) => {
     }
 
     const resposta = [];
-    for (const nota of criadas) {
+    for (let nota of criadas) {
+      // Sem XML e sem os dados: busca a nota completa (XML + DANFE em PDF) no Meu Danfe, na hora
+      const consulta = await completarNota(nota, usuario.nome).catch(err => {
+        console.warn('⚠️  Meu Danfe:', err.message);
+        return { status: 'falhou', codigo: 'erro_interno', mensagem: 'Falha ao buscar a nota.' };
+      });
+      if (consulta.status === 'completa') ({ rows: [nota] } = await db.query('SELECT * FROM notas WHERE id = $1', [nota.id]));
       let anteriores = [];
       if (nota.chave) {
         ({ rows: anteriores } = await db.query(
@@ -362,7 +455,7 @@ app.post('/api/notas', limite(60), camposUpload, rota(async (req, res) => {
         ));
       }
       await db.auditar(usuario.nome, 'criou', nota.id, { origem: nota.origem_dados, lote: criadas.length });
-      resposta.push({ id: nota.id, slug: nota.slug, url: linkNota(req, nota.slug), nota: resumoPublico(nota), registros_anteriores: anteriores });
+      resposta.push({ id: nota.id, slug: nota.slug, url: linkNota(req, nota.slug), nota: resumoPublico(nota), registros_anteriores: anteriores, consulta });
     }
     // Entram na lista "Para imprimir agora" da pessoa, junto com as que já estavam lá
     // (a lista só esvazia quando a pessoa toca em "Começar lista nova")
@@ -476,16 +569,25 @@ async function quemImprime(req) {
 
 // GET para o navegador abrir o PDF direto numa aba (funciona também no iPhone)
 //   ...etiquetas.pdf?ids=1,2,3&layout=4&marcar=1
-// "1 por folha": junta num PDF só o DANFE (PDF enviado) de cada nota; sem ele, faz uma página com todos os dados.
-async function juntarDanfes(notas, req) {
+// "1 por folha": junta num PDF só o DANFE de cada nota. Sem DANFE guardado, busca no Meu Danfe
+// (pela chave ou gerando pelo XML) e guarda; sem nada disso, faz uma página com todos os dados.
+async function juntarDanfes(notas, req, quem) {
   const saida = await PDFDocument.create();
   const pdfDaNota = async id => {
     const { rows: [a] } = await db.query(
       "SELECT caminho FROM arquivos WHERE nota_id = $1 AND tipo = 'nota_pdf' AND deleted_at IS NULL ORDER BY id LIMIT 1", [id]);
     return a ? fs.readFileSync(storage.caminhoAbsoluto(a.caminho)) : null;
   };
-  for (const n of notas) {
-    const pdf = await pdfDaNota(n.id);
+  for (let n of notas) {
+    let pdf = await pdfDaNota(n.id);
+    if (!pdf) {
+      const r = await completarNota(n, quem.nome).catch(() => ({ status: 'falhou' }));
+      if (r.status === 'completa') {
+        pdf = await pdfDaNota(n.id);
+        ({ rows: [n] } = await db.query(
+          'SELECT n.*, u.nome AS criado_por_nome FROM notas n LEFT JOIN usuarios u ON u.id = n.criado_por WHERE n.id = $1', [n.id]));
+      }
+    }
     let paginas = null;
     if (pdf) {
       try {
@@ -514,7 +616,7 @@ async function responderEtiquetas(req, res, quem) {
   // layout=1 → a nota completa (DANFE), uma por folha. Senão, etiquetas.
   // campos=fornecedor,produtos,... → blocos opcionais da etiqueta (chave e nº/emissão vão sempre)
   const pdf = layout === 1
-    ? await juntarDanfes(rows, req)
+    ? await juntarDanfes(rows, req, quem)
     : await etiquetas.gerarPDF(rows.map(n => ({ ...n, url: linkNota(req, n.slug) })), layout, req.query.campos);
   if (req.query.marcar !== '0') {
     await db.query('UPDATE notas SET etiqueta_impressa_em = NOW() WHERE id = ANY($1::int[])', [rows.map(n => n.id)]);
@@ -740,8 +842,10 @@ app.post('/api/admin/notas/:id/restaurar', rota(async (req, res) => {
 // Lê de novo o PDF/XML guardado e preenche só os campos que estiverem vazios
 app.post('/api/admin/notas/:id/reprocessar', rota(async (req, res) => {
   const id = Number(req.params.id) || 0;
-  const { rows: [nota] } = await db.query('SELECT * FROM notas WHERE id = $1', [id]);
+  let { rows: [nota] } = await db.query('SELECT * FROM notas WHERE id = $1', [id]);
   if (!nota) return erro(res, 404, 'Nota não encontrada.');
+  const consulta = await completarNota(nota, ADMIN);
+  if (consulta.status === 'completa') ({ rows: [nota] } = await db.query('SELECT * FROM notas WHERE id = $1', [id]));
   const { rows: arquivos } = await db.query(
     "SELECT tipo, caminho FROM arquivos WHERE nota_id = $1 AND deleted_at IS NULL AND tipo IN ('nota_pdf','nota_xml') ORDER BY id", [id]);
   const ler = tipo => {
@@ -756,7 +860,7 @@ app.post('/api/admin/notas/:id/reprocessar', rota(async (req, res) => {
     [id, ...campos.map(c => valorBanco(c, dados[c]))]
   );
   await db.auditar(ADMIN, 'reprocessou', id, { preenchidos: preencher });
-  res.json({ nota: rows[0], preenchidos: preencher });
+  res.json({ nota: rows[0], preenchidos: preencher, consulta });
 }));
 
 app.post('/api/admin/notas/:id/arquivos', camposUpload, rota(async (req, res) => {

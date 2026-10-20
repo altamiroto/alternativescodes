@@ -299,7 +299,10 @@ async function abrirNota(id) {
   };
   $('#det-reprocessar').onclick = async () => {
     const res = await adm(`/api/admin/notas/${id}/reprocessar`, { method: 'POST' });
-    aviso(res.preenchidos.length ? `Preenchido: ${res.preenchidos.join(', ')}` : 'Nada novo encontrado no arquivo.', 6000);
+    const c = res.consulta || {};
+    const msg = c.status === 'completa' ? 'Nota completa encontrada pela chave (XML e DANFE guardados).'
+      : c.status === 'falhou' ? `Busca pela chave falhou: ${c.mensagem}` : '';
+    aviso([msg, res.preenchidos.length ? `Preenchido: ${res.preenchidos.join(', ')}` : (msg ? '' : 'Nada novo encontrado no arquivo.')].filter(Boolean).join(' '), 6000);
     recarregar();
   };
   $('#det-etiqueta').onclick = () => { gerarEtiquetas([id], Number($('#det-layout').value), true); setTimeout(recarregar, 1500); };

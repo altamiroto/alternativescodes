@@ -274,7 +274,22 @@ function receberNova() {
   const texto = ids.length > 1
     ? `✅ ${ids.length} notas adicionadas (${ids.map(fmt.registro).join(', ')}).`
     : `✅ Nota ${fmt.registro(ids[0])} adicionada. Adicione outra ou gere o PDF.`;
-  $('#adicionada').innerHTML = `<div class="aviso ok" style="margin-top:12px">${texto}</div>`
+  const consulta = q.get('consulta');
+  const MOTIVOS = {
+    nao_encontrada: 'a SEFAZ não encontrou a nota por essa chave',
+    erro_busca: 'a SEFAZ não respondeu a busca',
+    demorou: 'a busca demorou demais',
+    repetida: 'essa chave falhou há pouco; espere alguns minutos para tentar de novo',
+    chave_invalida: 'a chave de acesso não foi aceita',
+    api_key: 'a chave da API Meu Danfe é inválida (avise o administrador)',
+    saldo: 'sem saldo na conta Meu Danfe (avise o administrador)',
+    indisponivel: 'o serviço Meu Danfe está com problema agora',
+    rede: 'sem conexão com o serviço Meu Danfe',
+  };
+  const avisoConsulta = consulta === 'ok'
+    ? '<div class="aviso ok">📥 Nota completa encontrada pela chave: dados, produtos e DANFE (PDF) foram guardados.</div>'
+    : consulta ? `<div class="aviso atencao">⚠️ <b>Não deu para buscar a nota completa</b> (${escapar(MOTIVOS[consulta] || 'falha na busca')}). A nota foi guardada só com o que foi enviado; para ter fornecedor e produtos, adicione também o PDF ou o XML dela.</div>` : '';
+  $('#adicionada').innerHTML = `<div class="aviso ok" style="margin-top:12px">${texto}</div>${avisoConsulta}`
     + (repetidas.length ? `<div class="aviso atencao">⚠️ Esta nota fiscal já tinha sido registrada antes (${repetidas.map(fmt.registro).join(', ')}). Confira se não é repetida.</div>` : '');
   $('#adicionada').classList.remove('oculto');
 }
