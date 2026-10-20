@@ -270,14 +270,6 @@ function irParaImpressao(r) {
   const params = new URLSearchParams({ nova: nota.id });
   // registros anteriores com a mesma chave (para avisar que pode ser repetida)
   if (nota.registros_anteriores?.length) params.set('repetida', nota.registros_anteriores.map(a => a.id).join(','));
-  // resultado da Consulta DANFE (busca da nota completa pela chave). A falha só importa
-  // quando o que foi enviado não trouxe os dados (ex.: só a chave, ou PDF escaneado).
-  const incompleta = !nota.nota?.itens?.length || !nota.nota?.emitente_nome;
-  if (nota.consulta?.status === 'completa') params.set('consulta', 'ok');
-  else if (nota.consulta?.status === 'falhou' && incompleta) {
-    params.set('consulta', nota.consulta.codigo || 'falhou');
-    if (nota.consulta.nova_tentativa) params.set('tenta', '1');
-  }
   location.href = `/?${params}`;
 }
 
