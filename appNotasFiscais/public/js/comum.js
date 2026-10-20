@@ -64,19 +64,40 @@ const Chave = {
     const c = Chave.normalizar(t);
     return Chave.validar(c) ? c : null;
   },
-  // UF (código IBGE), mês e modelo coerentes: filtra leituras erradas que por acaso fecham o DV
+  // Dígitos verificadores do CNPJ (aceita o CNPJ com letras: valor = código do caractere − 48)
+  cnpjValido(c) {
+    if (!/^[0-9A-Z]{12}[0-9]{2}$/.test(c) || /^(.)\1+$/.test(c)) return false;
+    const dv = (base, pesos) => {
+      const resto = [...base].reduce((s, ch, i) => s + (ch.charCodeAt(0) - 48) * pesos[i], 0) % 11;
+      return resto < 2 ? 0 : 11 - resto;
+    };
+    const p1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2], p2 = [6, ...p1];
+    const d1 = dv(c.slice(0, 12), p1);
+    return d1 === Number(c[12]) && dv(c.slice(0, 12) + d1, p2) === Number(c[13]);
+  },
+  cpfValido(c) {
+    if (!/^[0-9]{11}$/.test(c) || /^(.)\1+$/.test(c)) return false;
+    const dv = n => { const r = [...c.slice(0, n)].reduce((s, d, i) => s + Number(d) * (n + 1 - i), 0) * 10 % 11; return r === 10 ? 0 : r; };
+    return dv(9) === Number(c[9]) && dv(10) === Number(c[10]);
+  },
+  // UF (código IBGE), mês, modelo e CNPJ/CPF do emitente coerentes: filtra leituras erradas que por
+  // acaso fecham o dígito verificador da chave
   plausivel(c) {
     const UFS = [11, 12, 13, 14, 15, 16, 17, 21, 22, 23, 24, 25, 26, 27, 28, 29, 31, 32, 33, 35, 41, 42, 43, 50, 51, 52, 53];
     const mes = Number(c.slice(4, 6));
-    return UFS.includes(Number(c.slice(0, 2))) && mes >= 1 && mes <= 12 && ['55', '57', '58', '65', '67'].includes(c.slice(20, 22));
+    const doc = c.slice(6, 20);
+    return UFS.includes(Number(c.slice(0, 2))) && mes >= 1 && mes <= 12 && ['55', '57', '58', '65', '67'].includes(c.slice(20, 22))
+      && (Chave.cnpjValido(doc) || (doc.startsWith('000') && Chave.cpfValido(doc.slice(3))));
   },
   // Procura a chave no texto lido da foto (OCR): 44 caracteres seguidos, em grupos ou não. Letras
   // fora do CNPJ (posições 7 a 20) só podem ser números lidos errado (O→0, I→1, S→5, B→8...).
   doTexto(texto) {
     const MAPA = { O: '0', Q: '0', D: '0', U: '0', I: '1', L: '1', T: '1', J: '1', Z: '2', A: '4', S: '5', G: '6', B: '8' };
     const paraNumero = t => t.replace(/[A-Z]/g, l => MAPA[l] || l);
-    const linhas = String(texto || '').toUpperCase().split('\n');
-    for (const trecho of [...linhas, linhas.join(' ')]) {
+    // a chave fica numa linha só (ou quebrada em duas seguidas); juntar o texto todo criaria
+    // "chaves" com pedaços de linhas diferentes
+    const linhas = String(texto || '').toUpperCase().split('\n').filter(l => l.trim());
+    for (const trecho of [...linhas, ...linhas.slice(1).map((l, i) => `${linhas[i]} ${l}`)]) {
       const s = Chave.normalizar(trecho);
       for (let i = 0; i + 44 <= s.length; i++) {
         const w = s.slice(i, i + 44);
@@ -155,26 +176,38 @@ function obterLeitorNumeros() {
   return leitorNumeros;
 }
 
-// Recorta do vídeo a área do quadro guia (o vídeo aparece cortado na tela: object-fit cover)
-function recortarGuia(video, guia, larguraMax) {
+// Desenha um pedaço de uma imagem (vídeo, foto) num canvas, girado se preciso. Para os números,
+// em tons de cinza com mais contraste; para o código de barras, sem filtro (o filtro atrapalha a leitura).
+function desenhar(fonte, x, y, w, h, larguraMax, graus = 0, paraNumeros = true) {
+  const fator = Math.min(2, larguraMax / Math.max(w, h));
+  const W = Math.round(w * fator), H = Math.round(h * fator);
+  const deitar = graus % 180 !== 0;
+  const canvas = document.createElement('canvas');
+  canvas.width = deitar ? H : W;
+  canvas.height = deitar ? W : H;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (paraNumeros) ctx.filter = 'grayscale(1) contrast(1.4)';
+  ctx.translate(canvas.width / 2, canvas.height / 2);
+  ctx.rotate((graus * Math.PI) / 180);
+  ctx.drawImage(fonte, x, y, w, h, -W / 2, -H / 2, W, H);
+  return canvas;
+}
+
+// Recorta do vídeo a área do quadro guia (o vídeo aparece cortado na tela: object-fit cover), com
+// uma folga em volta: é comum a nota encostar na borda do quadro
+function recortarGuia(video, guia, larguraMax, graus = 0, paraNumeros = true) {
   const v = video.getBoundingClientRect(), g = guia.getBoundingClientRect();
   const escala = Math.max(v.width / video.videoWidth, v.height / video.videoHeight);
   const dx = (v.width - video.videoWidth * escala) / 2, dy = (v.height - video.videoHeight * escala) / 2;
-  const x = Math.max(0, (g.left - v.left - dx) / escala), y = Math.max(0, (g.top - v.top - dy) / escala);
-  const w = Math.min(video.videoWidth - x, g.width / escala), h = Math.min(video.videoHeight - y, g.height / escala);
-  const fator = Math.min(2, larguraMax / w);
-  const canvas = document.createElement('canvas');
-  canvas.width = Math.round(w * fator);
-  canvas.height = Math.round(h * fator);
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  ctx.filter = 'grayscale(1) contrast(1.4)';
-  ctx.drawImage(video, x, y, w, h, 0, 0, canvas.width, canvas.height);
-  return canvas;
+  const folgaX = g.width * 0.08, folgaY = g.height * 0.08;
+  const x = Math.max(0, (g.left - folgaX - v.left - dx) / escala), y = Math.max(0, (g.top - folgaY - v.top - dy) / escala);
+  const w = Math.min(video.videoWidth - x, (g.width + 2 * folgaX) / escala), h = Math.min(video.videoHeight - y, (g.height + 2 * folgaY) / escala);
+  return desenhar(video, x, y, w, h, larguraMax, graus, paraNumeros);
 }
 
 // Preto e branco com limiar local (média da vizinhança): foto escura, com sombra ou reflexo
 // vira texto preto no fundo branco, que é o que o leitor de números entende.
-function pretoEBranco(canvas, sensibilidade = 10, janela = 50) {
+function pretoEBranco(canvas, sensibilidade = 10, janela = 50, tirarBarras = false) {
   const { width: L, height: A } = canvas;
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   const img = ctx.getImageData(0, 0, L, A);
@@ -197,6 +230,7 @@ function pretoEBranco(canvas, sensibilidade = 10, janela = 50) {
       px[i] = px[i + 1] = px[i + 2] = px[i] < media - sensibilidade ? 0 : 255;
     }
   }
+  apagarManchasGrandes(px, L, A, tirarBarras);
   ctx.putImageData(img, 0, 0);
   // margem branca: o leitor erra letras encostadas na borda
   const M = 24;
@@ -210,40 +244,147 @@ function pretoEBranco(canvas, sensibilidade = 10, janela = 50) {
   return comMargem;
 }
 
+// Apaga (pinta de branco) as manchas pretas grandes demais para serem letras: borda da etiqueta,
+// fundo escuro em volta, linhas compridas de tabela. Sem isso o leitor acha que é uma figura.
+// Com tirarBarras, apaga também as barras do código de barras (altas e finas), que confundem os números.
+function apagarManchasGrandes(px, L, A, tirarBarras) {
+  const visto = new Uint8Array(L * A);
+  const pilha = new Int32Array(L * A);
+  const mancha = new Int32Array(L * A);
+  for (let inicio = 0; inicio < L * A; inicio++) {
+    if (visto[inicio] || px[inicio * 4] !== 0) continue;
+    let topo = 0, n = 0, x0 = L, x1 = 0, y0 = A, y1 = 0;
+    pilha[topo++] = inicio;
+    visto[inicio] = 1;
+    while (topo) {
+      const k = pilha[--topo];
+      mancha[n++] = k;
+      const x = k % L, y = (k - x) / L;
+      if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+      for (const v of [x > 0 ? k - 1 : -1, x < L - 1 ? k + 1 : -1, y > 0 ? k - L : -1, y < A - 1 ? k + L : -1]) {
+        if (v >= 0 && !visto[v] && px[v * 4] === 0) { visto[v] = 1; pilha[topo++] = v; }
+      }
+    }
+    const w = x1 - x0 + 1, h = y1 - y0 + 1;
+    if (w > L * 0.5 || h > A * 0.5 || (tirarBarras && h > A * 0.12 && h > 4 * w)) {
+      for (let j = 0; j < n; j++) { const i = mancha[j] * 4; px[i] = px[i + 1] = px[i + 2] = 255; }
+    }
+  }
+}
+
 // Variações do tratamento da imagem, uma por tentativa (cada leitura sai um pouco diferente)
-const VARIACOES_OCR = [[10, 50, 1400], [18, 30, 1400], [6, 70, 1700], [14, 40, 1100]];
+// [sensibilidade, janela, largura, apagar as barras]
+const VARIACOES_OCR = [[10, 50, 1400, true], [18, 30, 1400, false], [6, 70, 1700, true], [14, 40, 1100, false]];
+
+// Procura a chave numa foto da galeria: código de barras e, se não achar, os números (em pé,
+// deitada para um lado e para o outro). Devolve a chave ou null.
+async function lerChaveDaFoto(arquivo, aoAvancar = () => {}) {
+  const url = URL.createObjectURL(arquivo);
+  try {
+    const img = new Image();
+    img.src = url;
+    await img.decode(); // o navegador já aplica a rotação gravada na foto (EXIF)
+    const L = img.naturalWidth, A = img.naturalHeight;
+    const leitor = await obterLeitor();
+    for (const imagem of [img, desenhar(img, 0, 0, L, A, 2400, 90, false)]) {
+      try {
+        for (const c of await leitor.detect(imagem)) {
+          const chave = Chave.doCodigo(c.rawValue);
+          if (chave) return chave;
+        }
+      } catch { /* sem código de barras legível */ }
+    }
+    const ocr = await obterLeitorNumeros();
+    // [giro, tamanho, modo do leitor]: em pé primeiro; cada combinação lê a foto um pouco diferente
+    // [giro, tamanho, modo do leitor, apagar as barras]
+    const tentativas = [
+      [0, 1200, '11', false], [0, 1600, '6', true], [0, 1600, '11', true], [0, 1200, '6', false],
+      [270, 1600, '6', true], [270, 1200, '11', false], [90, 1600, '6', true], [90, 1200, '11', false], [180, 1600, '6', true],
+    ];
+    try {
+      for (const [n, [graus, tamanho, modo, tirarBarras]] of tentativas.entries()) {
+        aoAvancar(n + 1, tentativas.length);
+        await ocr.setParameters({ tessedit_pageseg_mode: modo });
+        const { data } = await ocr.recognize(pretoEBranco(desenhar(img, 0, 0, L, A, tamanho, graus), 12, 60, tirarBarras));
+        const chave = Chave.doTexto(data.text);
+        if (chave) return chave;
+      }
+    } finally {
+      await ocr.setParameters({ tessedit_pageseg_mode: '6' }); // o da câmera
+    }
+    return null;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
 
 function abrirLeitorChave() {
   return new Promise(resolve => {
     const tela = document.createElement('div');
     tela.className = 'leitor';
     tela.innerHTML = `
-      <video playsinline muted autoplay></video>
-      <div class="guia"><span>código de barras e os números embaixo dele</span></div>
-      <div class="ferramentas">
-        <button type="button" class="lanterna oculto">🔦 Lanterna</button>
-        <button type="button" class="zoom oculto">🔍 Aproximar</button>
+      <div class="camera">
+        <video playsinline muted autoplay></video>
+        <div class="guia"><span class="rotulo">código de barras e os números embaixo dele</span></div>
+        <div class="ferramentas">
+          <button type="button" class="virar" title="Ler com o celular deitado"><span class="icone">↻</span> <span class="texto">Virar</span></button>
+          <button type="button" class="lanterna oculto"><span class="icone">🔦</span> <span class="texto">Lanterna</span></button>
+          <button type="button" class="zoom oculto"><span class="icone">🔍</span> <span class="texto">Aproximar</span></button>
+        </div>
       </div>
       <div class="rodape">
-        <p>Aponte a câmera para o <b>código de barras</b> da nota.<br><span class="pequeno">Pode ser também só os <b>números da chave</b>. Deixe dentro do quadro, bem iluminado.</span></p>
+        <p class="instrucao">Aponte a câmera para o <b>código de barras</b> da nota.<br><span class="pequeno">Pode ser também só os <b>números da chave</b>. Deixe dentro do quadro, bem iluminado.</span></p>
         <p class="pequeno estado-ocr">Preparando a leitura dos números…</p>
-        <button class="btn discreto cancelar" type="button" style="color:#fff;border-color:#555;background:transparent">Cancelar</button>
+        <div class="botoes">
+          <button class="btn galeria" type="button"><span class="icone">🖼️</span> <span class="texto">Foto da galeria</span></button>
+          <button class="btn cancelar" type="button"><span class="icone">✕</span> <span class="texto">Cancelar</span></button>
+        </div>
+        <input type="file" accept="image/*" hidden>
       </div>`;
     document.body.appendChild(tela);
     const video = $('video', tela);
     const guia = $('.guia', tela);
     const estadoOcr = $('.estado-ocr', tela);
-    let stream = null, ativo = true;
+    let stream = null, ativo = true, lendoFoto = false;
 
     const fechar = chave => {
       if (!ativo) return;
       ativo = false;
       stream?.getTracks().forEach(t => t.stop());
+      paisagem.removeEventListener('change', aoGirarTela);
       tela.remove();
       resolve(chave);
     };
     const achou = chave => { navigator.vibrate?.(120); fechar(chave); };
     $('.cancelar', tela).onclick = () => fechar(null);
+
+    // "Virar": a tela continua em pé e o quadro de leitura deita (celular de lado, código comprido).
+    // Se o aparelho girar a tela sozinho (iPhone), o layout deitado já cuida disso.
+    const paisagem = matchMedia('(orientation: landscape)');
+    const aoGirarTela = () => { if (paisagem.matches) tela.classList.remove('deitado'); };
+    paisagem.addEventListener('change', aoGirarTela);
+    $('.virar', tela).onclick = () => tela.classList.toggle('deitado');
+    const deitado = () => tela.classList.contains('deitado');
+
+    // Foto da galeria
+    const entrada = $('input[type=file]', tela);
+    $('.galeria', tela).onclick = () => entrada.click();
+    entrada.onchange = async () => {
+      const arquivo = entrada.files[0];
+      entrada.value = '';
+      if (!arquivo) return;
+      lendoFoto = true;
+      estadoOcr.textContent = 'Lendo a foto…';
+      try {
+        const chave = await lerChaveDaFoto(arquivo, (n, total) => { estadoOcr.textContent = `Lendo os números da foto (${n} de ${total})…`; });
+        if (chave) return achou(chave);
+        aviso('Não encontrei a chave nessa foto. Tire uma foto mais de perto do código de barras ou dos números.', 6000);
+      } catch {
+        aviso('Não foi possível ler essa foto.', 4000);
+      } finally {
+        lendoFoto = false;
+      }
+    };
 
     // Lanterna e zoom, quando a câmera do aparelho permite (Android; o iPhone não libera a lanterna)
     function prepararFerramentas(trilha) {
@@ -270,19 +411,21 @@ function abrirLeitorChave() {
     async function lerCodigo() {
       const leitor = await obterLeitor();
       for (let volta = 0; ativo; volta++) {
-        try {
-          const imagem = volta % 2 ? recortarGuia(video, guia, 1600) : video;
-          for (const c of await leitor.detect(imagem)) {
-            const chave = Chave.doCodigo(c.rawValue);
-            if (chave) return achou(chave);
-          }
-        } catch { /* quadro ainda não pronto */ }
+        if (!lendoFoto) {
+          try {
+            const imagem = volta % 2 ? recortarGuia(video, guia, 1600, deitado() ? 270 : 0, false) : video;
+            for (const c of await leitor.detect(imagem)) {
+              const chave = Chave.doCodigo(c.rawValue);
+              if (chave) return achou(chave);
+            }
+          } catch { /* quadro ainda não pronto */ }
+        }
         await new Promise(r => setTimeout(r, 200));
       }
     }
 
-    // Números da chave (OCR), ao mesmo tempo. Só aceita quando duas leituras seguidas dão a mesma
-    // chave válida (dígito verificador, UF, mês e modelo), para não pegar número lido errado.
+    // Números da chave (OCR), ao mesmo tempo. Só aceita quando duas leituras recentes dão a mesma
+    // chave válida (dígitos verificadores, UF, mês, modelo e CNPJ).
     async function lerNumeros() {
       let leitor;
       try {
@@ -291,16 +434,21 @@ function abrirLeitorChave() {
         estadoOcr.textContent = 'Leitura dos números indisponível neste aparelho; use o código de barras.';
         return;
       }
-      let anterior = null;
+      const recentes = [];
       for (let volta = 0; ativo; volta++) {
-        estadoOcr.textContent = 'Lendo o código de barras e os números…';
-        try {
-          const [sensibilidade, janela, largura] = VARIACOES_OCR[volta % VARIACOES_OCR.length];
-          const { data } = await leitor.recognize(pretoEBranco(recortarGuia(video, guia, largura), sensibilidade, janela));
-          const chave = Chave.doTexto(data.text);
-          if (chave && chave === anterior) return achou(chave);
-          anterior = chave;
-        } catch { /* quadro ainda não pronto */ }
+        if (!lendoFoto) {
+          estadoOcr.textContent = 'Lendo o código de barras e os números…';
+          try {
+            const [sensibilidade, janela, largura, tirarBarras] = VARIACOES_OCR[volta % VARIACOES_OCR.length];
+            // deitado: o celular pode ter virado para um lado ou para o outro (4 tentativas de cada)
+            const graus = deitado() ? (Math.floor(volta / 4) % 2 ? 90 : 270) : 0;
+            const { data } = await leitor.recognize(pretoEBranco(recortarGuia(video, guia, largura, graus), sensibilidade, janela, tirarBarras));
+            const chave = Chave.doTexto(data.text);
+            if (chave && recentes.includes(chave)) return achou(chave);
+            recentes.push(chave);
+            if (recentes.length > VARIACOES_OCR.length) recentes.shift(); // uma volta completa de variações
+          } catch { /* quadro ainda não pronto */ }
+        }
         await new Promise(r => setTimeout(r, 150));
       }
     }
@@ -318,10 +466,11 @@ function abrirLeitorChave() {
         await lerCodigo();
       } catch (e) {
         if (!ativo) return;
-        fechar(null);
-        aviso(e.name === 'NotAllowedError'
-          ? 'A câmera foi bloqueada. Libere o acesso à câmera nas configurações do navegador.'
-          : 'Não foi possível abrir a câmera. Digite a chave.', 5000);
+        // sem câmera: a foto da galeria continua funcionando
+        estadoOcr.textContent = e.name === 'NotAllowedError'
+          ? 'A câmera foi bloqueada. Use uma foto da galeria ou libere a câmera nas configurações.'
+          : 'Não foi possível abrir a câmera. Use uma foto da galeria ou digite a chave.';
+        $('.instrucao', tela).classList.add('oculto');
       }
     })();
   });

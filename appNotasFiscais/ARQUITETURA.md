@@ -165,9 +165,21 @@ O código de barras precisa de uma leitura de perto, e por isso a chave também 
   primeira vez, depois fica no cache), servido do `node_modules` em `/vendor/ocr/`.
   - Recorta o quadro guia, passa para preto e branco com limiar local (aguenta sombra e pouca luz),
     põe margem branca e alterna 4 ajustes de tratamento entre as tentativas.
-  - Só aceita a chave quando o **dígito verificador** fecha, **UF, mês e modelo** são coerentes e
-    **duas leituras seguidas** dão a mesma chave. Letras lidas no lugar de números (O→0, B→8…) são
-    corrigidas fora das posições do CNPJ (que pode ter letras).
+  - Depois do preto e branco, apaga manchas grandes demais para serem letras (borda da etiqueta,
+    fundo escuro, linhas de tabela) e, em metade das tentativas, as barras do código de barras.
+  - Só aceita a chave quando o **dígito verificador** fecha, **UF, mês, modelo e o CNPJ (ou CPF) do
+    emitente** são válidos (dígitos verificadores próprios) e **duas leituras recentes** dão a mesma
+    chave. Procura a chave dentro de uma linha (ou duas seguidas), nunca juntando o texto todo.
+    Letras lidas no lugar de números (O→0, B→8…) são corrigidas fora das posições do CNPJ.
+- **🖼️ Foto da galeria** (na tela do leitor): procura o código de barras na foto (em pé e deitada) e,
+  se não achar, os números (9 combinações de giro, tamanho e modo de leitura). A rotação gravada na
+  foto é respeitada.
+- **↻ Virar**: a tela fica em pé (o manifest pede `portrait`; o iPhone ignora) e o quadro de leitura
+  deita, com os ícones girados, para usar o celular de lado com o código comprido. A imagem é girada
+  antes da leitura (testa os dois lados). Se o aparelho girar a tela sozinho, a tela do leitor usa
+  um layout próprio para a horizontal (câmera à esquerda, instruções à direita).
+- A área lida é um pouco maior que o quadro desenhado (8% de folga), porque é comum a nota encostar
+  na borda. O código de barras é procurado na imagem sem filtro (o contraste atrapalha o leitor).
 - Câmera: **🔦 Lanterna** e **🔍 Aproximar** (zoom 2×) quando o aparelho permite (Android; o iPhone
   não libera a lanterna para sites), foco contínuo, quadro guia maior, e o código de barras é
   procurado alternando a imagem inteira e o recorte ampliado do quadro.
