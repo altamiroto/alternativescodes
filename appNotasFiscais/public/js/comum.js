@@ -327,6 +327,77 @@ function abrirLeitorChave() {
   });
 }
 
+// ─── PDF e arquivos no iPhone com o app instalado ────
+// Instalado na tela de início, o iPhone abre o PDF dentro do próprio app, sem barra do Safari:
+// não aparece compartilhar/imprimir e nem dá para voltar. Nesse caso o app baixa o arquivo e abre
+// a tela de compartilhar do iPhone, que tem "Imprimir" e "Salvar em Arquivos".
+const iPhoneInstalado = () => {
+  const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  return ios && (navigator.standalone === true || matchMedia('(display-mode: standalone)').matches);
+};
+
+function abrirArquivo(url, nomePadrao = 'arquivo.pdf') {
+  if (!iPhoneInstalado()) {
+    const aba = window.open(url, '_blank');
+    if (!aba) location.href = url;
+    return;
+  }
+  const folha = document.createElement('div');
+  folha.className = 'folha-arquivo';
+  folha.innerHTML = `
+    <div class="caixa">
+      <p class="titulo">⏳ Preparando o arquivo…</p>
+      <p class="pequeno suave dica oculto">Na tela que abrir, toque em <b>Imprimir</b> (ou em <b>Salvar em Arquivos</b>).
+        Se não aparecer, deslize a lista para cima.</p>
+      <button class="btn primario grande imprimir oculto" type="button">🖨️ Imprimir</button>
+      <button class="btn discreto fechar" type="button">Fechar</button>
+    </div>`;
+  document.body.appendChild(folha);
+  const fechar = () => folha.remove();
+  $('.fechar', folha).onclick = fechar;
+  folha.addEventListener('click', e => { if (e.target === folha) fechar(); });
+
+  (async () => {
+    let arquivo;
+    try {
+      const resp = await fetch(url, { credentials: 'same-origin' });
+      if (!resp.ok) {
+        let msg = 'Não foi possível gerar o arquivo.';
+        try { msg = (await resp.json()).erro || msg; } catch { /* não é JSON */ }
+        throw new Error(msg);
+      }
+      const nome = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(resp.headers.get('Content-Disposition') || '')?.[1];
+      const blob = await resp.blob();
+      arquivo = new File([blob], nome ? decodeURIComponent(nome) : nomePadrao, { type: blob.type || 'application/pdf' });
+    } catch (err) {
+      $('.titulo', folha).textContent = `⚠️ ${err.message || 'Sem conexão. Tente de novo.'}`;
+      return;
+    }
+    if (!navigator.canShare?.({ files: [arquivo] })) {
+      $('.titulo', folha).textContent = '⚠️ Este iPhone não permite imprimir pelo app instalado. Atualize o iOS ou abra o site pelo Safari.';
+      return;
+    }
+    const compartilhar = () => navigator.share({ files: [arquivo] })
+      .then(fechar)
+      .catch(err => { if (err.name !== 'AbortError' && err.name !== 'NotAllowedError') aviso('Não foi possível abrir as opções de impressão.', 4000); });
+    $('.titulo', folha).textContent = '✅ Arquivo pronto';
+    $('.dica', folha).classList.remove('oculto');
+    const botao = $('.imprimir', folha);
+    botao.classList.remove('oculto');
+    botao.onclick = compartilhar; // o iPhone só abre a tela de compartilhar a partir de um toque
+  })();
+}
+
+// Links de arquivos (/f/...) e de PDFs gerados: no iPhone instalado passam pela tela acima
+document.addEventListener('click', e => {
+  const a = e.target.closest?.('a[href]');
+  if (!a || !iPhoneInstalado()) return;
+  const url = new URL(a.href, location.href);
+  if (url.origin !== location.origin || !/^\/(f\/|api\/(impressao|admin)\/etiquetas\.pdf)/.test(url.pathname)) return;
+  e.preventDefault();
+  abrirArquivo(url.pathname + url.search, a.getAttribute('download') || 'arquivo');
+});
+
 // ─── PWA ─────────────────────────────────────────────
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));

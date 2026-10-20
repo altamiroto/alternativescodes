@@ -154,7 +154,7 @@ function gerarEtiquetas(ids, layout, marcar) {
   let campos = [];
   try { campos = JSON.parse(localStorage.getItem('nf_campos') || '[]'); } catch { /* só a chave */ }
   const params = new URLSearchParams({ ids: ids.join(','), layout, marcar: marcar ? '1' : '0', campos: [].concat(campos).join(',') });
-  window.open(`/api/admin/etiquetas.pdf?${params}`, '_blank');
+  abrirArquivo(`/api/admin/etiquetas.pdf?${params}`, 'etiquetas.pdf');
 }
 
 $('#btn-etiquetas').addEventListener('click', () => {

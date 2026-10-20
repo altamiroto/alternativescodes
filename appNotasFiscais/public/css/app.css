@@ -305,3 +305,9 @@ input.chave { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; 
 .itens li:last-child { border-bottom: 0; }
 
 .rodape-pagina { text-align: center; color: var(--suave); font-size: 14px; margin-top: 24px; }
+
+/* Tela "Imprimir" do iPhone com o app instalado */
+.folha-arquivo { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.45); display: flex; align-items: flex-end; justify-content: center; }
+.folha-arquivo .caixa { background: var(--card, #fff); width: 100%; max-width: 520px; border-radius: 18px 18px 0 0; padding: 20px 16px calc(20px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 10px; text-align: center; }
+.folha-arquivo .titulo { margin: 0; font-weight: 700; font-size: 17px; }
+.folha-arquivo .dica { margin: 0; }
