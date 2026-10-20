@@ -175,6 +175,26 @@ app.get('/imprimir', (req, res) => res.redirect(301, '/')); // endereço antigo
 app.post('/compartilhar', (req, res) => res.redirect(303, '/nova'));
 app.get('/robots.txt', (req, res) => res.type('text/plain').send('User-agent: *\nDisallow: /\n'));
 app.get('/sw.js', (req, res) => res.set('Cache-Control', 'no-cache').sendFile(path.join(PUBLIC_DIR, 'sw.js')));
+// Leitor dos números da chave (OCR, Tesseract.js): arquivos servidos direto do node_modules.
+// Só o navegador usa; são baixados quando a pessoa abre a câmera (e ficam no cache).
+const ARQUIVOS_OCR = (() => {
+  const dist = path.dirname(require.resolve('tesseract.js/dist/tesseract.min.js'));
+  const core = path.dirname(require.resolve('tesseract.js-core/package.json'));
+  const lang = path.dirname(require.resolve('@tesseract.js-data/eng/package.json'));
+  return {
+    'tesseract.min.js': path.join(dist, 'tesseract.min.js'),
+    'worker.min.js': path.join(dist, 'worker.min.js'),
+    ...Object.fromEntries(['relaxedsimd-lstm', 'simd-lstm', 'lstm'].map(v =>
+      [`core/tesseract-core-${v}.wasm.js`, path.join(core, `tesseract-core-${v}.wasm.js`)])),
+    'lang/eng.traineddata.gz': path.join(lang, '4.0.0_best_int', 'eng.traineddata.gz'),
+  };
+})();
+app.get('/vendor/ocr/*', (req, res, next) => {
+  const arquivo = ARQUIVOS_OCR[req.params[0]];
+  if (!arquivo) return next();
+  res.set('Cache-Control', 'no-cache'); // confere a versão (304 se não mudou)
+  res.type(arquivo.endsWith('.gz') ? 'application/octet-stream' : 'application/javascript').sendFile(arquivo);
+});
 app.use(express.static(PUBLIC_DIR, {
   index: false,
   setHeaders: (res, arquivo) => {

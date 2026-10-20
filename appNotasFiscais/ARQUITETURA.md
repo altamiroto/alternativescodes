@@ -154,6 +154,18 @@ O código de barras precisa de uma leitura de perto, e por isso a chave também 
 - **CNPJ alfanumérico** (2026+): as posições do CNPJ aceitam `[0-9A-Z]` e cada caractere vale
   ASCII − 48. *Confirmar na Nota Técnica vigente.*
 - O leitor da câmera aceita o código de barras do DANFE e também o **QR da NFC-e** (`?p=CHAVE|...`).
+- **Leitura dos números da chave (OCR)**, ao mesmo tempo que o código de barras: quando as barras não
+  leem de cara (amassado, borrado, pouca luz), o app lê os 44 números impressos. Usa o Tesseract.js
+  no próprio celular (sem enviar a imagem para fora), carregado só quando a câmera abre (~7 MB na
+  primeira vez, depois fica no cache), servido do `node_modules` em `/vendor/ocr/`.
+  - Recorta o quadro guia, passa para preto e branco com limiar local (aguenta sombra e pouca luz),
+    põe margem branca e alterna 4 ajustes de tratamento entre as tentativas.
+  - Só aceita a chave quando o **dígito verificador** fecha, **UF, mês e modelo** são coerentes e
+    **duas leituras seguidas** dão a mesma chave. Letras lidas no lugar de números (O→0, B→8…) são
+    corrigidas fora das posições do CNPJ (que pode ter letras).
+- Câmera: **🔦 Lanterna** e **🔍 Aproximar** (zoom 2×) quando o aparelho permite (Android; o iPhone
+  não libera a lanterna para sites), foco contínuo, quadro guia maior, e o código de barras é
+  procurado alternando a imagem inteira e o recorte ampliado do quadro.
 
 ---
 
@@ -225,6 +237,7 @@ appNotasFiscais/
 │   ├── enviar.html · nota.html · admin.html · instalar.html
 │   ├── css/ · js/ · icons/ · manifest.json · sw.js
 │   └── vendor/          leitor de código de barras para iPhone (zxing-wasm, sem CDN)
+│                        (+ /vendor/ocr/: Tesseract.js servido do node_modules)
 ├── test/                npm test
 ├── Dockerfile · .env.example · README_DEPLOY.md
 ```
