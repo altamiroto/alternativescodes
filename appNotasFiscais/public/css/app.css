@@ -198,16 +198,43 @@ input.chave { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; 
 
 /* Leitor de código de barras em tela cheia */
 .leitor { position: fixed; inset: 0; z-index: 50; background: #000; display: flex; flex-direction: column; }
-.leitor video { flex: 1; width: 100%; object-fit: cover; min-height: 0; }
-.leitor .guia { position: absolute; left: 4%; right: 4%; top: 30%; height: 26%; border: 3px solid rgba(255,255,255,.9); border-radius: 12px; box-shadow: 0 0 0 100vmax rgba(0,0,0,.35); }
+.leitor .camera { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+.leitor video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.leitor .guia { position: absolute; left: 5%; right: 5%; top: 30%; height: 32%; border: 3px solid rgba(255,255,255,.9); border-radius: 12px; box-shadow: 0 0 0 100vmax rgba(0,0,0,.35); transition: all .2s; }
 .leitor .guia::after { content: ""; position: absolute; left: 4%; right: 4%; top: 40%; height: 2px; background: #ff3b30; }
-.leitor .guia span { position: absolute; left: 0; right: 0; top: -26px; text-align: center; color: #fff; font-size: 13px; text-shadow: 0 1px 2px #000; }
-.leitor .ferramentas { position: absolute; left: 0; right: 0; top: 16px; display: flex; justify-content: center; gap: 10px; }
-.leitor .ferramentas button { font: inherit; font-size: 15px; font-weight: 600; padding: 10px 16px; border-radius: 99px; border: 1px solid rgba(255,255,255,.5); background: rgba(0,0,0,.55); color: #fff; }
+.leitor .guia .rotulo { position: absolute; left: 0; right: 0; top: -26px; text-align: center; color: #fff; font-size: 13px; text-shadow: 0 1px 2px #000; }
+.leitor .ferramentas { position: absolute; left: 0; right: 0; top: 14px; display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; padding: 0 10px; }
+.leitor .ferramentas button { font: inherit; font-size: 15px; font-weight: 600; padding: 9px 14px; border-radius: 99px; border: 1px solid rgba(255,255,255,.5); background: rgba(0,0,0,.55); color: #fff; }
 .leitor .ferramentas button.ligado { background: #fff; color: #000; }
+.leitor .icone { display: inline-block; transition: transform .2s; }
 .leitor .estado-ocr { color: #bbb; }
-.leitor .rodape { padding: 16px; background: #000; color: #fff; text-align: center; }
-.leitor .rodape p { margin: 0 0 12px; }
+.leitor .rodape { padding: 14px 16px calc(14px + env(safe-area-inset-bottom)); background: #000; color: #fff; text-align: center; }
+.leitor .rodape p { margin: 0 0 10px; }
+.leitor .rodape .botoes { display: flex; gap: 10px; }
+.leitor .rodape .botoes .btn { flex: 1; color: #fff; border-color: #555; background: transparent; display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; }
+.leitor .rodape .botoes .galeria { background: #2a2f36; border-color: #2a2f36; }
+
+/* Celular deitado com a tela em pé ("Virar"): o quadro fica comprido no sentido do celular e os
+   ícones giram para ficarem de pé para quem segura o celular de lado */
+.leitor.deitado .guia { left: 27%; right: 27%; top: 9%; height: auto; bottom: 4%; }
+.leitor.deitado .guia::after { left: 60%; right: auto; top: 4%; bottom: 4%; width: 2px; height: auto; }
+.leitor.deitado .guia .rotulo { top: 0; bottom: 0; left: calc(100% + 6px); right: auto; writing-mode: vertical-rl; display: flex; align-items: center; justify-content: center; }
+.leitor.deitado .icone { transform: rotate(90deg); }
+.leitor.deitado .texto, .leitor.deitado .instrucao { display: none; }
+.leitor.deitado .ferramentas button { width: 48px; height: 48px; padding: 0; font-size: 20px; }
+.leitor.deitado .ferramentas button.virar { background: #fff; color: #000; }
+.leitor.deitado .rodape .botoes .btn { font-size: 22px; padding: 8px; }
+
+/* Tela girada pelo próprio aparelho (o iPhone não deixa travar em pé): câmera à esquerda e
+   instruções à direita, quadro largo; o "Virar" não é preciso */
+@media (orientation: landscape) {
+  .leitor { flex-direction: row; }
+  .leitor .rodape { width: min(300px, 40vw); overflow-y: auto; display: flex; flex-direction: column; justify-content: center; padding: 12px 14px calc(12px + env(safe-area-inset-bottom)) 14px; }
+  .leitor .rodape .botoes { flex-direction: column; }
+  .leitor .guia { left: 6%; right: 6%; top: 22%; height: 52%; }
+  .leitor .ferramentas { top: 10px; }
+  .leitor .ferramentas .virar { display: none; }
+}
 
 .toast {
   position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom)); transform: translateX(-50%);

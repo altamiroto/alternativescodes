@@ -22,7 +22,16 @@ test('recusa leitura com número errado ou faltando', () => {
 });
 
 test('aceita CNPJ com letras nas posições do CNPJ', () => {
-  const base = '352610' + '12ABC34500DE19' + '55001000123456100000001';
+  const base = '352610' + '12ABC34501DE35' + '55001000123456100000001'; // CNPJ de exemplo da Receita
   const c = base + Chave.dv(base);
   assert.strictEqual(Chave.doTexto(c.replace(/(.{4})/g, '$1 ')), c);
+});
+
+test('não monta chave com pedaços de linhas diferentes nem com CNPJ inválido', () => {
+  // leitura de página inteira que já gerou uma "chave" falsa (CNPJ com letras inválido)
+  assert.strictEqual(Chave.doTexto('326702508E11MM6FFNC0658711853126061543694000'), null);
+  assert.strictEqual(Chave.doTexto('PROTOCOLO 131267633203687\nX\nY\n3126 0615 4369 4000 0952 5500\nZ\n1065 8711 8511 3739 0203'), null);
+  assert.strictEqual(Chave.cnpjValido('11389858000106'), true);
+  assert.strictEqual(Chave.cnpjValido('11389858000107'), false);
+  assert.strictEqual(Chave.cpfValido('60926317687'), true);
 });
