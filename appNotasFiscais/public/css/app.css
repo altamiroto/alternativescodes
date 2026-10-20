@@ -199,8 +199,13 @@ input.chave { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; 
 /* Leitor de código de barras em tela cheia */
 .leitor { position: fixed; inset: 0; z-index: 50; background: #000; display: flex; flex-direction: column; }
 .leitor video { flex: 1; width: 100%; object-fit: cover; min-height: 0; }
-.leitor .guia { position: absolute; left: 6%; right: 6%; top: 42%; height: 16%; border: 3px solid rgba(255,255,255,.9); border-radius: 12px; box-shadow: 0 0 0 100vmax rgba(0,0,0,.35); }
-.leitor .guia::after { content: ""; position: absolute; left: 4%; right: 4%; top: 50%; height: 2px; background: #ff3b30; }
+.leitor .guia { position: absolute; left: 4%; right: 4%; top: 30%; height: 26%; border: 3px solid rgba(255,255,255,.9); border-radius: 12px; box-shadow: 0 0 0 100vmax rgba(0,0,0,.35); }
+.leitor .guia::after { content: ""; position: absolute; left: 4%; right: 4%; top: 40%; height: 2px; background: #ff3b30; }
+.leitor .guia span { position: absolute; left: 0; right: 0; top: -26px; text-align: center; color: #fff; font-size: 13px; text-shadow: 0 1px 2px #000; }
+.leitor .ferramentas { position: absolute; left: 0; right: 0; top: 16px; display: flex; justify-content: center; gap: 10px; }
+.leitor .ferramentas button { font: inherit; font-size: 15px; font-weight: 600; padding: 10px 16px; border-radius: 99px; border: 1px solid rgba(255,255,255,.5); background: rgba(0,0,0,.55); color: #fff; }
+.leitor .ferramentas button.ligado { background: #fff; color: #000; }
+.leitor .estado-ocr { color: #bbb; }
 .leitor .rodape { padding: 16px; background: #000; color: #fff; text-align: center; }
 .leitor .rodape p { margin: 0 0 12px; }
 
