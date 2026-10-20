@@ -154,6 +154,11 @@ O código de barras precisa de uma leitura de perto, e por isso a chave também 
 - **CNPJ alfanumérico** (2026+): as posições do CNPJ aceitam `[0-9A-Z]` e cada caractere vale
   ASCII − 48. *Confirmar na Nota Técnica vigente.*
 - O leitor da câmera aceita o código de barras do DANFE e também o **QR da NFC-e** (`?p=CHAVE|...`).
+- **iPhone com o app instalado:** o iOS abre PDFs dentro do próprio app, sem barra do Safari (sem
+  compartilhar/imprimir e sem voltar). Nesse caso (`navigator.standalone`), o PDF das etiquetas e os
+  links de arquivos (`/f/...`, DANFE) são baixados pelo app e aparece o botão **🖨️ Imprimir**, que
+  abre a tela de compartilhar do iPhone com o arquivo (Imprimir, Salvar em Arquivos…). Android,
+  computador e o iPhone pelo Safari continuam abrindo o PDF em outra aba.
 - **Leitura dos números da chave (OCR)**, ao mesmo tempo que o código de barras: quando as barras não
   leem de cara (amassado, borrado, pouca luz), o app lê os 44 números impressos. Usa o Tesseract.js
   no próprio celular (sem enviar a imagem para fora), carregado só quando a câmera abre (~7 MB na

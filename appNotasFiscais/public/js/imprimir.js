@@ -243,15 +243,21 @@ $('#btn-gerar').addEventListener('click', () => {
   const ids = [...imp.selecionadas].sort((a, b) => a - b);
   if (!ids.length) return;
   const params = new URLSearchParams({ ids: ids.join(','), layout: imp.layout, campos: imp.campos.join(',') });
-  // Abre direto (síncrono ao toque) para o navegador não bloquear a nova aba
-  const aba = window.open(`/api/impressao/etiquetas.pdf?${params}`, '_blank');
-  if (!aba) location.href = `/api/impressao/etiquetas.pdf?${params}`;
+  // Abre direto (síncrono ao toque) para o navegador não bloquear a nova aba;
+  // no iPhone com o app instalado, prepara o PDF e mostra o botão Imprimir
+  abrirArquivo(`/api/impressao/etiquetas.pdf?${params}`, 'etiquetas.pdf');
   // A lista continua na tela (marcada como impressa) para reimprimir se precisar
   $('#adicionada').classList.add('oculto');
   $('#pronto').classList.remove('oculto');
   window.scrollTo(0, 0);
   setTimeout(carregar, 1500);
 });
+
+// iPhone com o app instalado: o PDF não abre em outra aba, aparece o botão Imprimir
+if (iPhoneInstalado()) {
+  $('#pronto .aviso').innerHTML = '<b>✅ PDF gerado!</b> Toque em <b>🖨️ Imprimir</b> e escolha <b>Imprimir</b> (ou <b>Salvar em Arquivos</b>).<br>'
+    + '<span class="pequeno">As notas continuam na lista, marcadas como impressas.</span>';
+}
 
 // "Começar lista nova": esvazia o "Para imprimir agora" (as notas vão para "Notas antigas")
 $('#lista-nova').addEventListener('click', async () => {
