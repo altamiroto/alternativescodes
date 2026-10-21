@@ -315,20 +315,41 @@ function estimarInclinacao(img, L, A) {
   return melhor;
 }
 
-// Gira a imagem num ângulo qualquer (a tela cresce para caber tudo; o canto vazio fica branco)
+// O iPhone não desenha imagens acima de ~16,7 milhões de pixels (fica em branco)
+const MAX_PIXELS = 16000000;
+
+// Gira a imagem num ângulo qualquer, na resolução original (a tela cresce para caber tudo; o canto
+// vazio fica branco). Só reduz se passar do limite do iPhone.
 function girarLivre(img, L, A, graus) {
   const r = (graus * Math.PI) / 180, sen = Math.abs(Math.sin(r)), cos = Math.abs(Math.cos(r));
+  const W = L * cos + A * sen, H = L * sen + A * cos;
+  const f = Math.min(1, Math.sqrt(MAX_PIXELS / (W * H)));
   const c = document.createElement('canvas');
-  c.width = Math.round(L * cos + A * sen);
-  c.height = Math.round(L * sen + A * cos);
+  c.width = Math.round(W * f);
+  c.height = Math.round(H * f);
   const ctx = c.getContext('2d');
   ctx.fillStyle = '#fff';
   ctx.fillRect(0, 0, c.width, c.height);
   ctx.imageSmoothingQuality = 'high';
   ctx.translate(c.width / 2, c.height / 2);
   ctx.rotate(r);
+  ctx.scale(f, f);
   ctx.drawImage(img, -L / 2, -A / 2);
   return c;
+}
+
+// Converte um retângulo de uma cópia girada (0/90/180/270°) e redimensionada da foto para as
+// coordenadas da foto original: assim o trecho ampliado sai da original, sem perder detalhe
+function paraOriginal(copia, L, A, graus, x, y, w, h) {
+  const f = (graus % 180 ? copia.height : copia.width) / L;
+  const t = (graus * Math.PI) / 180, cos = Math.round(Math.cos(t)), sen = Math.round(Math.sin(t));
+  const ponto = (u, v) => {
+    const du = u - copia.width / 2, dv = v - copia.height / 2;
+    return [L / 2 + (du * cos + dv * sen) / f, A / 2 + (-du * sen + dv * cos) / f];
+  };
+  const [a, b] = [ponto(x, y), ponto(x + w, y + h)];
+  const x0 = Math.max(0, Math.min(a[0], b[0])), y0 = Math.max(0, Math.min(a[1], b[1]));
+  return { x: x0, y: y0, w: Math.min(L, Math.max(a[0], b[0])) - x0, h: Math.min(A, Math.max(a[1], b[1])) - y0, f };
 }
 
 // O nº da nota (posições 26 a 34 da chave) aparece em outra linha do que foi lido? (sem contar a
@@ -376,7 +397,8 @@ async function lerChaveDaFoto(arquivo, aoAvancar = () => {}) {
       const tw = (L / partes) * 1.5, th = (A / partes) * 1.5;
       for (let y = 0; !chave && y < A - th / 3; y += th / 3) {
         for (let x = 0; !chave && x < L - tw / 3; x += tw / 3) {
-          chave = await barras(desenhar(img, x, y, Math.min(tw, L - x), Math.min(th, A - y), 2600, 0, false));
+          const w = Math.min(tw, L - x), h = Math.min(th, A - y);
+          chave = await barras(desenhar(img, x, y, w, h, Math.max(2600, w, h), 0, false));
         }
       }
     }
@@ -441,7 +463,10 @@ async function lerChaveDaFoto(arquivo, aoAvancar = () => {}) {
           const x = Math.max(0, l.bbox.x0 - 25 * h), y = Math.max(0, l.bbox.y0 - 1.2 * h);
           const w = Math.min(foto.width - x, l.bbox.x1 - l.bbox.x0 + 50 * h), alto = Math.min(foto.height - y, 3.4 * h);
           for (const [letra, tirarBarras, sensibilidade, janela] of AJUSTES_TRECHO) {
-            const trecho = desenhar(foto, x, y, w, alto, Math.max(w, alto) * Math.min(4, letra / h), 0, true, 4);
+            // recorta da foto original (não da cópia reduzida) e amplia até a letra ficar do tamanho certo
+            const o = paraOriginal(foto, LB, AB, graus, x, y, w, alto);
+            const tamanho = Math.max(w, alto) * Math.min(4, letra / h);
+            const trecho = desenhar(base, o.x, o.y, o.w, o.h, tamanho, graus, true, 8);
             const r = await ocr.recognize(pretoEBranco(trecho, sensibilidade, janela, tirarBarras));
             if ((chave = conferir(r.data.text))) return chave;
           }
