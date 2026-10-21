@@ -178,8 +178,8 @@ function obterLeitorNumeros() {
 
 // Desenha um pedaço de uma imagem (vídeo, foto) num canvas, girado se preciso. Para os números,
 // em tons de cinza com mais contraste; para o código de barras, sem filtro (o filtro atrapalha a leitura).
-function desenhar(fonte, x, y, w, h, larguraMax, graus = 0, paraNumeros = true) {
-  const fator = Math.min(2, larguraMax / Math.max(w, h));
+function desenhar(fonte, x, y, w, h, larguraMax, graus = 0, paraNumeros = true, ampliarAte = 2) {
+  const fator = Math.min(ampliarAte, larguraMax / Math.max(w, h));
   const W = Math.round(w * fator), H = Math.round(h * fator);
   const deitar = graus % 180 !== 0;
   const canvas = document.createElement('canvas');
@@ -276,8 +276,11 @@ function apagarManchasGrandes(px, L, A, tirarBarras) {
 // [sensibilidade, janela, largura, apagar as barras]
 const VARIACOES_OCR = [[10, 50, 1400, true], [18, 30, 1400, false], [6, 70, 1700, true], [14, 40, 1100, false]];
 
-// Procura a chave numa foto da galeria: código de barras e, se não achar, os números (em pé,
-// deitada para um lado e para o outro). Devolve a chave ou null.
+// Procura a chave numa foto da galeria (a foto pode estar deitada, de cabeça para baixo e com a
+// etiqueta pequena num canto). Devolve a chave ou null.
+//   1. código de barras na foto inteira, na resolução original, e em pedaços ampliados;
+//   2. números: para cada giro, lê a foto, acha as linhas com muitos números e lê de novo só
+//      aquele trecho, ampliado (é o que resolve etiqueta pequena numa foto grande).
 async function lerChaveDaFoto(arquivo, aoAvancar = () => {}) {
   const url = URL.createObjectURL(arquivo);
   try {
@@ -285,29 +288,63 @@ async function lerChaveDaFoto(arquivo, aoAvancar = () => {}) {
     img.src = url;
     await img.decode(); // o navegador já aplica a rotação gravada na foto (EXIF)
     const L = img.naturalWidth, A = img.naturalHeight;
+
+    aoAvancar('Procurando o código de barras…');
     const leitor = await obterLeitor();
-    for (const imagem of [img, desenhar(img, 0, 0, L, A, 2400, 90, false)]) {
+    const barras = async imagem => {
       try {
         for (const c of await leitor.detect(imagem)) {
           const chave = Chave.doCodigo(c.rawValue);
           if (chave) return chave;
         }
-      } catch { /* sem código de barras legível */ }
+      } catch { /* nada legível */ }
+      return null;
+    };
+    let chave = await barras(img);
+    for (const partes of [2, 3]) {
+      const tw = (L / partes) * 1.5, th = (A / partes) * 1.5;
+      for (let y = 0; !chave && y < A - th / 3; y += th / 3) {
+        for (let x = 0; !chave && x < L - tw / 3; x += tw / 3) {
+          chave = await barras(desenhar(img, x, y, Math.min(tw, L - x), Math.min(th, A - y), 2600, 0, false));
+        }
+      }
+      if (chave) return chave;
     }
+    if (chave) return chave;
+
     const ocr = await obterLeitorNumeros();
-    // [giro, tamanho, modo do leitor]: em pé primeiro; cada combinação lê a foto um pouco diferente
-    // [giro, tamanho, modo do leitor, apagar as barras]
-    const tentativas = [
-      [0, 1200, '11', false], [0, 1600, '6', true], [0, 1600, '11', true], [0, 1200, '6', false],
-      [270, 1600, '6', true], [270, 1200, '11', false], [90, 1600, '6', true], [90, 1200, '11', false], [180, 1600, '6', true],
-    ];
     try {
-      for (const [n, [graus, tamanho, modo, tirarBarras]] of tentativas.entries()) {
-        aoAvancar(n + 1, tentativas.length);
+      for (const [n, graus] of [0, 270, 90, 180].entries()) {
+        aoAvancar(`Lendo os números da foto (${n + 1} de 4)…`);
+        const foto = desenhar(img, 0, 0, L, A, 2400, graus);
+        await ocr.setParameters({ tessedit_pageseg_mode: '11' });
+        const { data } = await ocr.recognize(foto, {}, { text: true, blocks: true });
+        if ((chave = Chave.doTexto(data.text))) return chave;
+        // linhas com muitos números (a chave lida pela metade já serve para achar onde ela está)
+        const linhas = (data.blocks || []).flatMap(b => b.paragraphs.flatMap(p => p.lines))
+          .map(l => ({ l, numeros: (l.text.match(/\d/g) || []).length }))
+          .filter(x => x.numeros >= 8)
+          .sort((a, b) => b.numeros - a.numeros)
+          .slice(0, 4);
+        await ocr.setParameters({ tessedit_pageseg_mode: '6' });
+        for (const { l } of linhas) {
+          const h = Math.max(6, l.bbox.y1 - l.bbox.y0);
+          const x = Math.max(0, l.bbox.x0 - 25 * h), y = Math.max(0, l.bbox.y0 - 1.2 * h);
+          const w = Math.min(foto.width - x, l.bbox.x1 - l.bbox.x0 + 50 * h), alto = Math.min(foto.height - y, 3.4 * h);
+          // [altura da letra depois de ampliar, apagar as barras]
+          for (const [letra, tirarBarras] of [[48, true], [36, false], [60, true]]) {
+            const fator = Math.min(5, letra / h);
+            const trecho = desenhar(foto, x, y, w, alto, Math.max(w, alto) * fator, 0, true, 5);
+            const r = await ocr.recognize(pretoEBranco(trecho, 10, 50, tirarBarras));
+            if ((chave = Chave.doTexto(r.data.text))) return chave;
+          }
+        }
+      }
+      // foto simples e próxima (só a etiqueta): a foto inteira tratada
+      for (const [tamanho, modo, tirarBarras] of [[1200, '11', false], [1600, '6', true]]) {
         await ocr.setParameters({ tessedit_pageseg_mode: modo });
-        const { data } = await ocr.recognize(pretoEBranco(desenhar(img, 0, 0, L, A, tamanho, graus), 12, 60, tirarBarras));
-        const chave = Chave.doTexto(data.text);
-        if (chave) return chave;
+        const { data } = await ocr.recognize(pretoEBranco(desenhar(img, 0, 0, L, A, tamanho), 12, 60, tirarBarras));
+        if ((chave = Chave.doTexto(data.text))) return chave;
       }
     } finally {
       await ocr.setParameters({ tessedit_pageseg_mode: '6' }); // o da câmera
@@ -376,7 +413,7 @@ function abrirLeitorChave() {
       lendoFoto = true;
       estadoOcr.textContent = 'Lendo a foto…';
       try {
-        const chave = await lerChaveDaFoto(arquivo, (n, total) => { estadoOcr.textContent = `Lendo os números da foto (${n} de ${total})…`; });
+        const chave = await lerChaveDaFoto(arquivo, texto => { estadoOcr.textContent = texto; });
         if (chave) return achou(chave);
         aviso('Não encontrei a chave nessa foto. Tire uma foto mais de perto do código de barras ou dos números.', 6000);
       } catch {
