@@ -284,6 +284,53 @@ const AJUSTES_TRECHO = [
   [24, true, 16, 35], [30, false, 10, 50], [22, false, 6, 70], [26, true, 14, 40],
 ];
 
+// Inclinação da foto, de -30° a 30°: o ângulo em que as linhas de texto e as barras ficam mais
+// alinhadas (os pontos pretos se concentram em poucas linhas e colunas). Em graus, no sentido
+// em que é preciso girar a imagem para endireitar.
+function estimarInclinacao(img, L, A) {
+  const c = pretoEBranco(desenhar(img, 0, 0, L, A, 800), 12, 40);
+  const { width: W, height: H } = c;
+  const px = c.getContext('2d').getImageData(0, 0, W, H).data;
+  const xs = [], ys = [];
+  for (let y = 0; y < H; y += 2) {
+    for (let x = 0; x < W; x += 2) if (px[(y * W + x) * 4] === 0) { xs.push(x - W / 2); ys.push(y - H / 2); }
+  }
+  if (xs.length < 200) return 0;
+  // faixas de 2 px, o mesmo passo da amostra (senão o ângulo 0 ganha por arredondamento)
+  const R = Math.ceil(Math.hypot(W, H) / 4) + 1;
+  const linhas = new Float64Array(2 * R + 1), colunas = new Float64Array(2 * R + 1);
+  let melhor = 0, maior = -1;
+  for (let a = -30; a <= 30; a += 0.5) {
+    const sen = Math.sin((a * Math.PI) / 180), cos = Math.cos((a * Math.PI) / 180);
+    linhas.fill(0);
+    colunas.fill(0);
+    for (let i = 0; i < xs.length; i++) {
+      linhas[Math.round((ys[i] * cos - xs[i] * sen) / 2) + R]++;
+      colunas[Math.round((xs[i] * cos + ys[i] * sen) / 2) + R]++;
+    }
+    let q = 0;
+    for (let k = 0; k < linhas.length; k++) q += linhas[k] * linhas[k] + colunas[k] * colunas[k];
+    if (q > maior) { maior = q; melhor = a; }
+  }
+  return melhor;
+}
+
+// Gira a imagem num ângulo qualquer (a tela cresce para caber tudo; o canto vazio fica branco)
+function girarLivre(img, L, A, graus) {
+  const r = (graus * Math.PI) / 180, sen = Math.abs(Math.sin(r)), cos = Math.abs(Math.cos(r));
+  const c = document.createElement('canvas');
+  c.width = Math.round(L * cos + A * sen);
+  c.height = Math.round(L * sen + A * cos);
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, c.width, c.height);
+  ctx.imageSmoothingQuality = 'high';
+  ctx.translate(c.width / 2, c.height / 2);
+  ctx.rotate(r);
+  ctx.drawImage(img, -L / 2, -A / 2);
+  return c;
+}
+
 // O nº da nota (posições 26 a 34 da chave) aparece em outra linha do que foi lido? (sem contar a
 // própria linha da chave). Ex.: "NF: 539576", "Nº 000.539.576".
 function numeroDaNotaNaFoto(chave, textos) {
@@ -328,6 +375,17 @@ async function lerChaveDaFoto(arquivo, aoAvancar = () => {}) {
     }
     if (chave) return chave;
 
+    // Foto inclinada (até 30°): endireita e procura o código de barras de novo; a leitura dos
+    // números também usa a foto endireitada
+    let base = img, LB = L, AB = A;
+    const inclinacao = estimarInclinacao(img, L, A);
+    if (Math.abs(inclinacao) >= 1) {
+      base = girarLivre(img, L, A, -inclinacao);
+      LB = base.width;
+      AB = base.height;
+      if ((chave = await barras(base))) return chave;
+    }
+
     // Chave lida pelos números só vale com confirmação: lida igual duas vezes, ou com o nº da nota
     // (que está dentro da chave) aparecendo em outro lugar da etiqueta ("NF: 539576"). Em foto de
     // baixa resolução, uma leitura com dois números errados pode fechar o dígito verificador.
@@ -350,7 +408,7 @@ async function lerChaveDaFoto(arquivo, aoAvancar = () => {}) {
       await ocr.setParameters({ tessedit_pageseg_mode: '11' });
       const giros = [];
       for (const graus of [0, 270, 90, 180]) {
-        const { data } = await ocr.recognize(desenhar(img, 0, 0, L, A, 1600, graus), {}, { text: true, blocks: true });
+        const { data } = await ocr.recognize(desenhar(base, 0, 0, LB, AB, 1600, graus), {}, { text: true, blocks: true });
         if ((chave = conferir(data.text))) return chave;
         const palavras = (data.blocks || []).flatMap(b => b.paragraphs.flatMap(p => p.lines.flatMap(l => l.words)));
         giros.push({ graus, pontos: palavras.filter(w => w.confidence > 70 && w.text.length >= 3).length });
@@ -360,7 +418,7 @@ async function lerChaveDaFoto(arquivo, aoAvancar = () => {}) {
       // os dois lados mais prováveis (o lado certo quase sempre é o primeiro)
       for (const [n, { graus }] of giros.slice(0, 2).entries()) {
         aoAvancar(`Lendo os números da foto (${n + 1} de 2)…`);
-        const foto = desenhar(img, 0, 0, L, A, 3200, graus);
+        const foto = desenhar(base, 0, 0, LB, AB, 3200, graus);
         await ocr.setParameters({ tessedit_pageseg_mode: '11' });
         const { data } = await ocr.recognize(foto, {}, { text: true, blocks: true });
         if ((chave = conferir(data.text))) return chave;
@@ -384,7 +442,7 @@ async function lerChaveDaFoto(arquivo, aoAvancar = () => {}) {
         // foto só da etiqueta (letras grandes): a foto inteira tratada, neste giro
         for (const [tamanho, modo, tirarBarras] of [[1200, '11', false], [1600, '6', true]]) {
           await ocr.setParameters({ tessedit_pageseg_mode: modo });
-          const r = await ocr.recognize(pretoEBranco(desenhar(img, 0, 0, L, A, tamanho, graus), 12, 60, tirarBarras));
+          const r = await ocr.recognize(pretoEBranco(desenhar(base, 0, 0, LB, AB, tamanho, graus), 12, 60, tirarBarras));
           if ((chave = conferir(r.data.text))) return chave;
         }
       }
