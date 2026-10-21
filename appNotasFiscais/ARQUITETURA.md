@@ -171,9 +171,16 @@ O código de barras precisa de uma leitura de perto, e por isso a chave também 
     emitente** são válidos (dígitos verificadores próprios) e **duas leituras recentes** dão a mesma
     chave. Procura a chave dentro de uma linha (ou duas seguidas), nunca juntando o texto todo.
     Letras lidas no lugar de números (O→0, B→8…) são corrigidas fora das posições do CNPJ.
-- **🖼️ Foto da galeria** (na tela do leitor): procura o código de barras na foto (em pé e deitada) e,
-  se não achar, os números (9 combinações de giro, tamanho e modo de leitura). A rotação gravada na
-  foto é respeitada.
+- **🖼️ Foto da galeria** (na tela do leitor), para foto girada e com a etiqueta pequena num canto:
+  1. código de barras na foto inteira, na resolução original, e em pedaços ampliados (2×2 e 3×3);
+  2. descobre para que lado a foto está (leitura rápida: o lado certo tem mais palavras lidas com
+     confiança) e, nos 2 lados mais prováveis, acha as linhas com muitos números e lê de novo só
+     aquele trecho, ampliado para letras de 20 a 30 px, com 8 ajustes de imagem;
+  3. chave lida pelos números só vale **lida igual duas vezes** ou com o **nº da nota aparecendo em
+     outra linha** da etiqueta ("NF: 539576") — em foto de baixa resolução, uma leitura com dois
+     números errados pode fechar o dígito verificador (aconteceu nos testes e é recusada).
+  A rotação gravada na foto (EXIF) é respeitada. Foto que chega pelo WhatsApp perde resolução; a
+  original do celular lê muito melhor.
 - **↻ Virar**: a tela fica em pé (o manifest pede `portrait`; o iPhone ignora) e o quadro de leitura
   deita, com os ícones girados, para usar o celular de lado com o código comprido. A imagem é girada
   antes da leitura (testa os dois lados). Se o aparelho girar a tela sozinho, a tela do leitor usa

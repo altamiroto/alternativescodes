@@ -457,7 +457,8 @@ function abrirLeitorChave() {
       try {
         const chave = await lerChaveDaFoto(arquivo, texto => { estadoOcr.textContent = texto; });
         if (chave) return achou(chave);
-        aviso('Não encontrei a chave nessa foto. Tire uma foto mais de perto do código de barras ou dos números.', 6000);
+        aviso('Não encontrei a chave nessa foto. Tire uma foto mais de perto da etiqueta (código de barras e números '
+          + 'nítidos). Foto recebida pelo WhatsApp perde qualidade: prefira a original.', 8000);
       } catch {
         aviso('Não foi possível ler essa foto.', 4000);
       } finally {
