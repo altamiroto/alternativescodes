@@ -35,3 +35,13 @@ test('não monta chave com pedaços de linhas diferentes nem com CNPJ inválido'
   assert.strictEqual(Chave.cnpjValido('11389858000107'), false);
   assert.strictEqual(Chave.cpfValido('60926317687'), true);
 });
+
+test('confirmação pelo nº da nota escrito em outra linha da etiqueta', () => {
+  const trecho = fonte.slice(fonte.indexOf('function numeroDaNotaNaFoto'), fonte.indexOf('// Procura a chave numa foto da galeria'));
+  const numeroDaNotaNaFoto = new Function(`${trecho}; return numeroDaNotaNaFoto;`)();
+  const k = '32261024867555000284550050005395761487410537'; // NF 539576
+  assert.strictEqual(numeroDaNotaNaFoto(k, ['DANFE Simplificado\nNF 539576 Série 5 Emissão 08/10/2026']), true);
+  assert.strictEqual(numeroDaNotaNaFoto(k, ['Nº 000.539.576']), true);
+  assert.strictEqual(numeroDaNotaNaFoto(k, [k]), false);                 // a própria linha da chave não conta
+  assert.strictEqual(numeroDaNotaNaFoto(k, ['Pedido 5395766']), false);  // número parecido não conta
+});

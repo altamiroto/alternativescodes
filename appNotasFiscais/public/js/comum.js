@@ -276,6 +276,23 @@ function apagarManchasGrandes(px, L, A, tirarBarras) {
 // [sensibilidade, janela, largura, apagar as barras]
 const VARIACOES_OCR = [[10, 50, 1400, true], [18, 30, 1400, false], [6, 70, 1700, true], [14, 40, 1100, false]];
 
+// Ajustes para ler de novo um trecho ampliado: [altura da letra, apagar as barras, sensibilidade,
+// janela]. O leitor vai melhor com letras de 20 a 30 pixels; cada ajuste erra em lugares diferentes,
+// e só uma leitura exata (com todos os dígitos verificadores certos) é aceita.
+const AJUSTES_TRECHO = [
+  [24, true, 10, 50], [24, false, 10, 50], [20, true, 10, 50], [28, true, 10, 50],
+  [24, true, 16, 35], [30, false, 10, 50], [22, false, 6, 70], [26, true, 14, 40],
+];
+
+// O nº da nota (posições 26 a 34 da chave) aparece em outra linha do que foi lido? (sem contar a
+// própria linha da chave). Ex.: "NF: 539576", "Nº 000.539.576".
+function numeroDaNotaNaFoto(chave, textos) {
+  const nf = String(Number(chave.slice(25, 34)));
+  if (nf.length < 4) return false; // número curto aparece por acaso
+  const re = new RegExp(`(^|\\D)0*${nf}(\\D|$)`);
+  return textos.some(t => t.split('\n').some(l => (l.match(/\d/g) || []).length < 20 && re.test(l.replace(/(\d)\.(?=\d)/g, '$1'))));
+}
+
 // Procura a chave numa foto da galeria (a foto pode estar deitada, de cabeça para baixo e com a
 // etiqueta pequena num canto). Devolve a chave ou null.
 //   1. código de barras na foto inteira, na resolução original, e em pedaços ampliados;
@@ -308,43 +325,68 @@ async function lerChaveDaFoto(arquivo, aoAvancar = () => {}) {
           chave = await barras(desenhar(img, x, y, Math.min(tw, L - x), Math.min(th, A - y), 2600, 0, false));
         }
       }
-      if (chave) return chave;
     }
     if (chave) return chave;
 
+    // Chave lida pelos números só vale com confirmação: lida igual duas vezes, ou com o nº da nota
+    // (que está dentro da chave) aparecendo em outro lugar da etiqueta ("NF: 539576"). Em foto de
+    // baixa resolução, uma leitura com dois números errados pode fechar o dígito verificador.
+    const lidas = new Map(), textos = [];
+    const conferir = texto => {
+      textos.push(texto);
+      const nova = Chave.doTexto(texto);
+      if (nova) lidas.set(nova, (lidas.get(nova) || 0) + 1);
+      for (const [c, vezes] of lidas) {
+        // o nº da nota confere só parte da chave: vale se nenhuma outra chave diferente foi lida
+        if (vezes >= 2 || (lidas.size === 1 && numeroDaNotaNaFoto(c, textos))) return c;
+      }
+      return null;
+    };
     const ocr = await obterLeitorNumeros();
     try {
-      for (const [n, graus] of [0, 270, 90, 180].entries()) {
-        aoAvancar(`Lendo os números da foto (${n + 1} de 4)…`);
-        const foto = desenhar(img, 0, 0, L, A, 2400, graus);
+      // Para que lado a foto está? Leitura rápida em tamanho pequeno: o lado certo tem mais
+      // palavras lidas com confiança. Começa por ele (os outros ficam para depois).
+      aoAvancar('Vendo para que lado a foto está…');
+      await ocr.setParameters({ tessedit_pageseg_mode: '11' });
+      const giros = [];
+      for (const graus of [0, 270, 90, 180]) {
+        const { data } = await ocr.recognize(desenhar(img, 0, 0, L, A, 1600, graus), {}, { text: true, blocks: true });
+        if ((chave = conferir(data.text))) return chave;
+        const palavras = (data.blocks || []).flatMap(b => b.paragraphs.flatMap(p => p.lines.flatMap(l => l.words)));
+        giros.push({ graus, pontos: palavras.filter(w => w.confidence > 70 && w.text.length >= 3).length });
+      }
+      giros.sort((a, b) => b.pontos - a.pontos);
+
+      // os dois lados mais prováveis (o lado certo quase sempre é o primeiro)
+      for (const [n, { graus }] of giros.slice(0, 2).entries()) {
+        aoAvancar(`Lendo os números da foto (${n + 1} de 2)…`);
+        const foto = desenhar(img, 0, 0, L, A, 3200, graus);
         await ocr.setParameters({ tessedit_pageseg_mode: '11' });
         const { data } = await ocr.recognize(foto, {}, { text: true, blocks: true });
-        if ((chave = Chave.doTexto(data.text))) return chave;
+        if ((chave = conferir(data.text))) return chave;
         // linhas com muitos números (a chave lida pela metade já serve para achar onde ela está)
         const linhas = (data.blocks || []).flatMap(b => b.paragraphs.flatMap(p => p.lines))
           .map(l => ({ l, numeros: (l.text.match(/\d/g) || []).length }))
           .filter(x => x.numeros >= 8)
           .sort((a, b) => b.numeros - a.numeros)
-          .slice(0, 4);
+          .slice(0, 5);
         await ocr.setParameters({ tessedit_pageseg_mode: '6' });
-        for (const { l } of linhas) {
+        for (const { l } of linhas.slice(0, 3)) {
           const h = Math.max(6, l.bbox.y1 - l.bbox.y0);
           const x = Math.max(0, l.bbox.x0 - 25 * h), y = Math.max(0, l.bbox.y0 - 1.2 * h);
           const w = Math.min(foto.width - x, l.bbox.x1 - l.bbox.x0 + 50 * h), alto = Math.min(foto.height - y, 3.4 * h);
-          // [altura da letra depois de ampliar, apagar as barras]
-          for (const [letra, tirarBarras] of [[48, true], [36, false], [60, true]]) {
-            const fator = Math.min(5, letra / h);
-            const trecho = desenhar(foto, x, y, w, alto, Math.max(w, alto) * fator, 0, true, 5);
-            const r = await ocr.recognize(pretoEBranco(trecho, 10, 50, tirarBarras));
-            if ((chave = Chave.doTexto(r.data.text))) return chave;
+          for (const [letra, tirarBarras, sensibilidade, janela] of AJUSTES_TRECHO) {
+            const trecho = desenhar(foto, x, y, w, alto, Math.max(w, alto) * Math.min(4, letra / h), 0, true, 4);
+            const r = await ocr.recognize(pretoEBranco(trecho, sensibilidade, janela, tirarBarras));
+            if ((chave = conferir(r.data.text))) return chave;
           }
         }
-      }
-      // foto simples e próxima (só a etiqueta): a foto inteira tratada
-      for (const [tamanho, modo, tirarBarras] of [[1200, '11', false], [1600, '6', true]]) {
-        await ocr.setParameters({ tessedit_pageseg_mode: modo });
-        const { data } = await ocr.recognize(pretoEBranco(desenhar(img, 0, 0, L, A, tamanho), 12, 60, tirarBarras));
-        if ((chave = Chave.doTexto(data.text))) return chave;
+        // foto só da etiqueta (letras grandes): a foto inteira tratada, neste giro
+        for (const [tamanho, modo, tirarBarras] of [[1200, '11', false], [1600, '6', true]]) {
+          await ocr.setParameters({ tessedit_pageseg_mode: modo });
+          const r = await ocr.recognize(pretoEBranco(desenhar(img, 0, 0, L, A, tamanho, graus), 12, 60, tirarBarras));
+          if ((chave = conferir(r.data.text))) return chave;
+        }
       }
     } finally {
       await ocr.setParameters({ tessedit_pageseg_mode: '6' }); // o da câmera
