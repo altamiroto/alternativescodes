@@ -179,6 +179,11 @@ O código de barras precisa de uma leitura de perto, e por isso a chave também 
   3. chave lida pelos números só vale **lida igual duas vezes** ou com o **nº da nota aparecendo em
      outra linha** da etiqueta ("NF: 539576") — em foto de baixa resolução, uma leitura com dois
      números errados pode fechar o dígito verificador (aconteceu nos testes e é recusada).
+  Foto **inclinada** (até 30°): mede a inclinação pelo alinhamento das linhas de texto e das barras
+  e endireita a foto antes de ler (só acima de 2,5°; abaixo disso girar borra mais do que ajuda).
+  Quando uma chave aparece uma vez, faz leituras extras da foto inteira para confirmá-la.
+  Testado com fotos em resolução de celular (3000×4000): inclinadas até 25°, onduladas (embalagem
+  amassada) e deitadas leem pelos números em 4 a 20 s; o código de barras só decodifica quase reto.
   A rotação gravada na foto (EXIF) é respeitada. Foto que chega pelo WhatsApp perde resolução; a
   original do celular lê muito melhor.
 - **↻ Virar**: a tela fica em pé (o manifest pede `portrait`; o iPhone ignora) e o quadro de leitura
