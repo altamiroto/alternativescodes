@@ -340,6 +340,13 @@ function numeroDaNotaNaFoto(chave, textos) {
   return textos.some(t => t.split('\n').some(l => (l.match(/\d/g) || []).length < 20 && re.test(l.replace(/(\d)\.(?=\d)/g, '$1'))));
 }
 
+// Leituras da foto inteira tratada: [tamanho, modo do leitor, apagar as barras]. As duas primeiras
+// sempre; as outras só para confirmar uma chave que apareceu uma vez
+const LEITURAS_FOTO_INTEIRA = [
+  [1200, '11', false], [1600, '6', true],
+  [1000, '6', true], [1400, '11', true], [1800, '6', false], [1400, '6', false], [2200, '11', false], [1000, '11', true],
+];
+
 // Procura a chave numa foto da galeria (a foto pode estar deitada, de cabeça para baixo e com a
 // etiqueta pequena num canto). Devolve a chave ou null.
 //   1. código de barras na foto inteira, na resolução original, e em pedaços ampliados;
@@ -379,7 +386,7 @@ async function lerChaveDaFoto(arquivo, aoAvancar = () => {}) {
     // números também usa a foto endireitada
     let base = img, LB = L, AB = A;
     const inclinacao = estimarInclinacao(img, L, A);
-    if (Math.abs(inclinacao) >= 1) {
+    if (Math.abs(inclinacao) >= 2.5) { // abaixo disso girar borra mais do que ajuda
       base = girarLivre(img, L, A, -inclinacao);
       LB = base.width;
       AB = base.height;
@@ -439,8 +446,10 @@ async function lerChaveDaFoto(arquivo, aoAvancar = () => {}) {
             if ((chave = conferir(r.data.text))) return chave;
           }
         }
-        // foto só da etiqueta (letras grandes): a foto inteira tratada, neste giro
-        for (const [tamanho, modo, tirarBarras] of [[1200, '11', false], [1600, '6', true]]) {
+        // foto só da etiqueta (letras grandes): a foto inteira tratada, neste giro. Se já apareceu
+        // uma chave lida uma vez só, insiste com outros tamanhos para confirmar (ou descartar)
+        for (const [n, [tamanho, modo, tirarBarras]] of LEITURAS_FOTO_INTEIRA.entries()) {
+          if (n >= 2 && !lidas.size) break;
           await ocr.setParameters({ tessedit_pageseg_mode: modo });
           const r = await ocr.recognize(pretoEBranco(desenhar(base, 0, 0, LB, AB, tamanho, graus), 12, 60, tirarBarras));
           if ((chave = conferir(r.data.text))) return chave;
